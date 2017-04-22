@@ -1382,6 +1382,9 @@ int BlueFS::_flush_and_sync_log(std::unique_lock<std::mutex>& l,
     return 0;
   }
 
+  vector<interval_set<uint64_t>> to_release(pending_release.size());
+  to_release.swap(pending_release);
+
   uint64_t seq = log_t.seq = ++log_seq;
   assert(want_seq == 0 || want_seq <= seq);
   log_t.uuid = super.uuid;
@@ -1474,6 +1477,17 @@ int BlueFS::_flush_and_sync_log(std::unique_lock<std::mutex>& l,
              << " already >= out seq " << seq
              << ", we lost a race against another log flush, done" << dendl;
   }
+
+  for (unsigned i = 0; i < to_release.size(); ++i) {
+    if (!to_release[i].empty()) {
+      /* OK, now we have the guarantee alloc[i] won't be null. */
+      for (auto p = to_release[i].begin(); p != to_release[i].end(); ++p) {
+        bdev[i]->discard(p.get_start(), p.get_len());
+      }
+      alloc[i]->release(to_release[i]);
+    }
+  }
+
   _update_logger_stats();
 
   return 0;
@@ -1846,10 +1860,12 @@ int BlueFS::_allocate(uint8_t id, uint64_t len,
   }
   if (r < 0 || (alloc_len < (int64_t)left)) {
     if (r == 0) {
+      interval_set<uint64_t> to_release;
       alloc[id]->unreserve(left - alloc_len);
       for (auto& p : extents) {
-        alloc[id]->release(p.offset, p.length);
+        to_release.insert(p.offset, p.length);
       }
+      alloc[id]->release(to_release);
     }
     if (id != BDEV_SLOW) {
       if (bdev[id]) {
@@ -1905,18 +1921,12 @@ void BlueFS::sync_metadata()
   std::unique_lock<std::mutex> l(lock);
   if (log_t.empty()) {
     dout(10) << __func__ << " - no pending log events" << dendl;
-    return;
-  }
-  dout(10) << __func__ << dendl;
-  utime_t start = ceph_clock_now();
-  vector<interval_set<uint64_t>> to_release(pending_release.size());
-  to_release.swap(pending_release);
-  flush_bdev(); // FIXME?
-  _flush_and_sync_log(l);
-  for (unsigned i = 0; i < to_release.size(); ++i) {
-    for (auto p = to_release[i].begin(); p != to_release[i].end(); ++p) {
-      alloc[i]->release(p.get_start(), p.get_len());
-    }
+  } else {
+    dout(10) << __func__ << dendl;
+    utime_t start = ceph_clock_now();
+    flush_bdev(); // FIXME?
+    _flush_and_sync_log(l);
+    dout(10) << __func__ << " done in " << (ceph_clock_now() - start) << dendl;
   }
 
   if (_should_compact_log()) {
@@ -1926,10 +1936,6 @@ void BlueFS::sync_metadata()
       _compact_log_async(l);
     }
   }
-
-  utime_t end = ceph_clock_now();
-  utime_t dur = end - start;
-  dout(10) << __func__ << " done in " << dur << dendl;
 }
 
 int BlueFS::open_for_write(
