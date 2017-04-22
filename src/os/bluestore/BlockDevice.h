@@ -24,7 +24,9 @@
 
 #include "acconfig.h"
 #include "aio.h"
-
+//#include "include/assert.h"
+//#include "include/buffer.h"
+#include "include/interval_set.h"
 #define SPDK_PREFIX "spdk:"
 
 /// track in-flight io
@@ -144,6 +146,7 @@ public:
     IOContext *ioc,
     bool buffered) = 0;
   virtual int flush() = 0;
+  virtual int discard(uint64_t offset, uint64_t len) { return 0; }
 
   void queue_reap_ioc(IOContext *ioc);
   void reap_ioc();
