@@ -2214,6 +2214,12 @@ class PrepareSpace(object):
 
         partition = device.get_partition(num)
 
+        if not os.path.exists(self.space_symlink):
+            LOG.debug(self.space_symlink + ' not exists, try /dev/disk/by-parttypeuuid')
+            self.space_symlink = '/dev/disk/by-parttypeuuid/{type}.{uuid}'.format(
+                type=partition.get_ptype(),
+                uuid=getattr(self.args, self.name + '_uuid'))
+
         LOG.debug('%s is GPT partition %s',
                   self.name.capitalize(),
                   self.space_symlink)
