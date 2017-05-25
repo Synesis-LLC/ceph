@@ -307,9 +307,9 @@ public:
       ceph_spin_unlock(&cct->_feature_lock);
       if (!cct->_experimental_features.empty()) {
         if (cct->_experimental_features.count("*")) {
-          lderr(cct) << "WARNING: all dangerous and experimental features are enabled." << dendl;
+          ldout(cct, 5) << "WARNING: all dangerous and experimental features are enabled." << dendl;
         } else {
-          lderr(cct) << "WARNING: the following dangerous and experimental features are enabled: "
+          ldout(cct, 5) << "WARNING: the following dangerous and experimental features are enabled: "
 	    << cct->_experimental_features << dendl;
         }
       }
@@ -502,7 +502,7 @@ void CephContext::do_command(std::string command, cmdmap_t& cmdmap,
       _log->reopen_log_file();
     }
     else {
-      assert(0 == "registered under wrong command?");    
+      assert(0 == "registered under wrong command?");
     }
     f->close_section();
   }

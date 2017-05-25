@@ -63,7 +63,7 @@ public:
     std::ostream* _dout = &_dout_os;
 
 #define lsubdout(cct, sub, v)  dout_impl(cct, ceph_subsys_##sub, v) dout_prefix
-#define ldout(cct, v)  dout_impl(cct, dout_subsys, v) dout_prefix
+#define ldout(cct, v)  dout_impl(cct, ceph_subsys_, v) dout_prefix
 #define lderr(cct) dout_impl(cct, ceph_subsys_, -1) dout_prefix
 
 #define ldpp_dout(dpp, v) if (dpp) dout_impl(dpp->get_cct(), dpp->get_subsys(), v) (*_dout << dpp->gen_prefix())

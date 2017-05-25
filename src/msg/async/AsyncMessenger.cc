@@ -538,7 +538,7 @@ int AsyncMessenger::_send_message(Message *m, const entity_inst_t& dest)
   else if (m && m->get_type() == CEPH_MSG_OSD_OPREPLY)
     OID_EVENT_TRACE(((MOSDOpReply *)m)->get_oid().name.c_str(), "SEND_MSG_OSD_OP_REPLY");
 
-  ldout(cct, 1) << __func__ << "--> " << dest.name << " "
+  ldout(cct, 20) << __func__ << "--> " << dest.name << " "
       << dest.addr << " -- " << *m << " -- ?+"
       << m->get_data().length() << " " << m << dendl;
 

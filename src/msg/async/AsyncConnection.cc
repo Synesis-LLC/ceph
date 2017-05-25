@@ -1877,7 +1877,7 @@ int AsyncConnection::send_message(Message *m)
 {
   FUNCTRACE();
   lgeneric_subdout(async_msgr->cct, ms,
-		   1) << "-- " << async_msgr->get_myaddr() << " --> "
+		   20) << "-- " << async_msgr->get_myaddr() << " --> "
 		      << get_peer_addr() << " -- "
 		      << *m << " -- " << m << " con "
 		      << m->get_connection().get()
