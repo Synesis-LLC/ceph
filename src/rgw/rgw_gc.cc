@@ -199,7 +199,7 @@ int RGWGC::process(int index, int max_secs)
 
         const string& oid = obj.key.name; /* just stored raw oid there */
 
-	dout(0) << "gc::process: removing " << obj.pool << ":" << obj.key.name << dendl;
+	dout(20) << "gc::process: removing " << obj.pool << ":" << obj.key.name << dendl;
 	ObjectWriteOperation op;
 	cls_refcount_put(op, info.tag, true);
         ret = ctx->operate(oid, &op);
@@ -232,8 +232,12 @@ done:
   return 0;
 }
 
+#include "elapse_guard.h"
+
 int RGWGC::process()
 {
+  elapse_guard eg(__func__);
+
   int max_secs = cct->_conf->rgw_gc_processor_max_time;
 
   unsigned start;

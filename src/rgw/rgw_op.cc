@@ -3699,8 +3699,12 @@ void RGWDeleteObj::pre_exec()
   rgw_bucket_object_pre_exec(s);
 }
 
+#include "elapse_guard.h"
+
 void RGWDeleteObj::execute()
 {
+  elapse_guard eg(__func__);
+
   if (!s->bucket_exists) {
     op_ret = -ERR_NO_SUCH_BUCKET;
     return;
