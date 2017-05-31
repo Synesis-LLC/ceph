@@ -24,8 +24,6 @@
 
 #include "acconfig.h"
 #include "aio.h"
-//#include "include/assert.h"
-//#include "include/buffer.h"
 #include "include/interval_set.h"
 #define SPDK_PREFIX "spdk:"
 
@@ -94,30 +92,44 @@ public:
 class BlockDevice {
 public:
   CephContext* cct;
+  typedef void (*aio_callback_t)(void *handle, void *aio);
 private:
   std::mutex ioc_reap_lock;
   std::vector<IOContext*> ioc_reap_queue;
   std::atomic_int ioc_reap_count = {0};
 
 protected:
+  uint64_t size;
+  uint64_t block_size;
   bool rotational = true;
 
 public:
-  BlockDevice(CephContext* cct) : cct(cct) {}
+  aio_callback_t aio_callback;
+  void *aio_callback_priv;
+  BlockDevice(CephContext* cct, aio_callback_t cb, void *cbpriv)
+  : cct(cct),
+    size(0),
+    block_size(0),
+    aio_callback(cb),
+    aio_callback_priv(cbpriv)
+ {}
   virtual ~BlockDevice() = default;
-  typedef void (*aio_callback_t)(void *handle, void *aio);
 
   static BlockDevice *create(
-    CephContext* cct, const std::string& path, aio_callback_t cb, void *cbpriv);
+    CephContext* cct, const std::string& path, aio_callback_t cb, void *cbpriv, aio_callback_t d_cb, void *d_cbpriv);
   virtual bool supported_bdev_label() { return true; }
   virtual bool is_rotational() { return rotational; }
 
   virtual void aio_submit(IOContext *ioc) = 0;
 
-  virtual uint64_t get_size() const = 0;
-  virtual uint64_t get_block_size() const = 0;
+  uint64_t get_size() const { return size; }
+  uint64_t get_block_size() const { return block_size; }
 
-  virtual int collect_metadata(std::string prefix, std::map<std::string,std::string> *pm) const = 0;
+  virtual int collect_metadata(const std::string& prefix, std::map<std::string,std::string> *pm) const = 0;
+
+  virtual int get_devname(std::string *out) {
+    return -ENOENT;
+  }
 
   virtual int read(
     uint64_t off,
@@ -147,6 +159,8 @@ public:
     bool buffered) = 0;
   virtual int flush() = 0;
   virtual int discard(uint64_t offset, uint64_t len) { return 0; }
+  virtual int queue_discard(interval_set<uint64_t> &to_release) { return -1; }
+  virtual void discard_drain() { return; }
 
   void queue_reap_ioc(IOContext *ioc);
   void reap_ioc();
