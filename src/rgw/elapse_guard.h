@@ -18,7 +18,7 @@ class elapse_guard
   virtual ~elapse_guard()
   {
     uint64_t elapsed = ceph_clock_now().to_nsec() - start;
-    dout(0) << "#### " << name << " " << elapsed/1000000 << dendl;
+    dout(10) << "elapsed " << name << " " << elapsed/1000000 << dendl;
   }
 };
 
