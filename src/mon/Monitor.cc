@@ -3072,7 +3072,7 @@ void Monitor::handle_command(MonOpRequestRef op)
   string module;
   string err;
 
-  dout(0) << "handle_command " << *m << dendl;
+  dout(20) << "handle_command " << *m << dendl;
 
   string format;
   cmd_getval(g_ceph_context, cmdmap, "format", format, string("plain"));

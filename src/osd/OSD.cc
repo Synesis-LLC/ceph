@@ -4510,7 +4510,7 @@ bool OSD::maybe_wait_for_max_pg(spg_t pgid, bool is_mon_create)
     bool is_primary = osdmap->get_pg_acting_rank(pgid.pgid, whoami) == 0;
     pending_creates_from_osd.emplace(pgid.pgid, is_primary);
   }
-  dout(1) << __func__ << " withhold creation of pg " << pgid
+  dout(0) << __func__ << " withhold creation of pg " << pgid
 	  << ": " << pg_map.size() << " >= "<< max_pgs_per_osd << dendl;
   return true;
 }
@@ -8327,7 +8327,9 @@ void OSD::check_osdmap_features(ObjectStore *fs)
     uint64_t features = osdmap->get_features(entity_name_t::TYPE_OSD, &mask);
 
     if ((p.features_required & mask) != features) {
-      dout(0) << "crush map has features " << features
+      dout(0) << "crush map has features 0x" << std::hex << std::setfill('0') << std::setw(16) << features
+              << " with mask 0x" << std::hex << std::setfill('0') << std::setw(16) << mask
+              << ", while cluster msgr osd policy requires 0x" << std::hex << std::setfill('0') << std::setw(16) << p.features_required
 	      << ", adjusting msgr requires for osds" << dendl;
       p.features_required = (p.features_required & ~mask) | features;
       cluster_messenger->set_policy(entity_name_t::TYPE_OSD, p);
