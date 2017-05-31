@@ -7,6 +7,8 @@ export DEB_HOST_ARCH      ?= $(shell dpkg-architecture -qDEB_HOST_ARCH)
 
 extraopts += -DUSE_CRYPTOPP=OFF -DWITH_OCF=ON -DWITH_LTTNG=ON -DWITH_PYTHON3=ON -DWITH_EMBEDDED=OFF
 extraopts += -DWITH_CEPHFS_JAVA=ON
+#extraopts += -DALLOCATOR=jemalloc
+extraopts += -DWITH_TESTS=OFF
 # assumes that ceph is exmpt from multiarch support, so we override the libdir.
 extraopts += -DCMAKE_INSTALL_LIBDIR=/usr/lib
 extraopts += -DCMAKE_INSTALL_LIBEXECDIR=/usr/lib
@@ -140,7 +142,6 @@ override_dh_strip:
 	dh_strip -plibcephfs2 --dbg-package=libcephfs2-dbg
 	dh_strip -plibrgw2 --dbg-package=librgw2-dbg
 	dh_strip -pradosgw --dbg-package=radosgw-dbg
-	dh_strip -pceph-test --dbg-package=ceph-test-dbg
 
 override_dh_shlibdeps:
 	dh_shlibdeps -a --exclude=erasure-code --exclude=rados-classes --exclude=compressor

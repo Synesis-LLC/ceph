@@ -10,7 +10,7 @@ if test -e $BUILD_DIR; then
 fi
 mkdir $BUILD_DIR
 cd $BUILD_DIR
-cmake -DBOOST_J=$(nproc) -DCMAKE_BUILD_TYPE=$MODE "$@"  ..
+cmake -DBOOST_J=$(nproc) -DCMAKE_BUILD_TYPE=$MODE -DALLOCATOR=jemalloc -DWITH_TESTS=OFF "$@"  ..
 
 # minimal config to find plugins
 cat <<EOF > ceph.conf

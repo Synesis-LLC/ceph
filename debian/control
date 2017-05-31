@@ -32,7 +32,6 @@ Build-Depends: bc,
                libexpat1-dev,
                libfcgi-dev,
                libfuse-dev,
-               libgoogle-perftools-dev [i386 amd64 arm64],
 		libibverbs-dev,
                libkeyutils-dev,
                libleveldb-dev,
@@ -98,7 +97,7 @@ Recommends: btrfs-tools,
             ntp | time-daemon
 Replaces: ceph-common (<< 0.78-500), python-ceph (<< 0.92-1223),
 	  ceph-test (<< 0.94-1322), ceph (<< 10)
-Breaks: python-ceph (<< 0.92-1223), ceph-test (<< 0.94-1322), 
+Breaks: python-ceph (<< 0.92-1223), ceph-test (<< 0.94-1322),
         ceph (<< 10)
 Description: common ceph daemon libraries and management tools
  Ceph is a massively scalable, open-source, distributed
@@ -640,23 +639,6 @@ Description: debugging symbols for radosgw
  service as well as the OpenStack Object Storage ("Swift") API.
  .
  This package contains debugging symbols for radosgw.
-
-Package: ceph-test
-Architecture: linux-any
-Depends: ceph-common, curl, xmlstarlet, ${misc:Depends}, ${shlibs:Depends}
-Description: Ceph test and benchmarking tools
- This package contains tools for testing and benchmarking Ceph.
-
-Package: ceph-test-dbg
-Architecture: linux-any
-Section: debug
-Priority: extra
-Depends: ceph-test (= ${binary:Version}), ceph-common (= ${binary:Version}),
-         curl,
-         ${misc:Depends}
-Description: Ceph test and benchmarking tools
- .
- This package contains the debugging symbols for ceph-test.
 
 Package: python-ceph
 Architecture: linux-any
