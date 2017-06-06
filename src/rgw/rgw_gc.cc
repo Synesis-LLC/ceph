@@ -199,7 +199,7 @@ int RGWGC::process(int index, int max_secs)
 
         const string& oid = obj.key.name; /* just stored raw oid there */
 
-	dout(20) << "gc::process: removing " << obj.pool << ":" << obj.key.name << dendl;
+	dout(0) << "gc::process: removing " << obj.pool << ":" << obj.key.name << dendl;
 	ObjectWriteOperation op;
 	cls_refcount_put(op, info.tag, true);
         ret = ctx->operate(oid, &op);
@@ -280,12 +280,12 @@ void RGWGC::stop_processor()
 void *RGWGC::GCWorker::entry() {
   do {
     utime_t start = ceph_clock_now();
-    dout(2) << "garbage collection: start" << dendl;
+    dout(0) << "garbage collection: start" << dendl;
     int r = gc->process();
     if (r < 0) {
       dout(0) << "ERROR: garbage collection process() returned error r=" << r << dendl;
     }
-    dout(2) << "garbage collection: stop" << dendl;
+    dout(0) << "garbage collection: stop" << dendl;
 
     if (gc->going_down())
       break;

@@ -1,7 +1,7 @@
 ceph (12.0.1-999) UNRELEASED; urgency=medium
 
   * Non-maintainer upload.
-  * bypass gc + jemalloc + disable log spam
+  * bypass gc + disable log spam
 
  -- Aleksei <aleksey_gutikov@synesis.ru>  Wed, 31 May 2017 11:06:11 +0300
 

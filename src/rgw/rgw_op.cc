@@ -3754,50 +3754,35 @@ void RGWDeleteObj::execute()
     }
 
     if (!ver_restored) {
-      if(store->ctx()->_conf->rgw_remove_object_always_bypass_gc){
-        /* Try to delete object same way like radosgw-admin with --bypass-gc option does. */
-        int max_concurrent_ios = store->ctx()->_conf->rgw_remove_object_max_concurrent_ios;
-        std::list<librados::AioCompletion*> handles;
-        cls_rgw_obj_key cls_key(s->object.get_index_key_name(), s->object.instance);
+      /* Swift's versioning mechanism hasn't found any previous version of
+       * the object that could be restored. This means we should proceed
+       * with the regular delete path. */
+      RGWRados::Object del_target(store, s->bucket_info, *obj_ctx, obj);
+      RGWRados::Object::Delete del_op(&del_target);
 
-        op_ret = rgw_remove_object_bypass_gc(store, s->bucket, s->bucket_info,
-                                    *obj_ctx, cls_key,
-                                    max_concurrent_ios, true,
-                                    handles);
-        if (op_ret < 0) {
-          return;
-        }
-      } else {
-        /* Swift's versioning mechanism hasn't found any previous version of
-         * the object that could be restored. This means we should proceed
-         * with the regular delete path. */
-        RGWRados::Object del_target(store, s->bucket_info, *obj_ctx, obj);
-        RGWRados::Object::Delete del_op(&del_target);
+      op_ret = get_system_versioning_params(s, &del_op.params.olh_epoch,
+                                            &del_op.params.marker_version_id);
+      if (op_ret < 0) {
+        return;
+      }
 
-        op_ret = get_system_versioning_params(s, &del_op.params.olh_epoch,
-                                              &del_op.params.marker_version_id);
-        if (op_ret < 0) {
-          return;
-        }
+      del_op.params.bucket_owner = s->bucket_owner.get_id();
+      del_op.params.versioning_status = s->bucket_info.versioning_status();
+      del_op.params.obj_owner = s->owner;
+      del_op.params.unmod_since = unmod_since;
+      del_op.params.high_precision_time = s->system_request; /* system request uses high precision time */
 
-        del_op.params.bucket_owner = s->bucket_owner.get_id();
-        del_op.params.versioning_status = s->bucket_info.versioning_status();
-        del_op.params.obj_owner = s->owner;
-        del_op.params.unmod_since = unmod_since;
-        del_op.params.high_precision_time = s->system_request; /* system request uses high precision time */
+      op_ret = del_op.delete_obj();
+      if (op_ret >= 0) {
+        delete_marker = del_op.result.delete_marker;
+        version_id = del_op.result.version_id;
+      }
 
-        op_ret = del_op.delete_obj();
-        if (op_ret >= 0) {
-          delete_marker = del_op.result.delete_marker;
-          version_id = del_op.result.version_id;
-        }
-
-        /* Check whether the object has expired. Swift API documentation
-         * stands that we should return 404 Not Found in such case. */
-        if (need_object_expiration() && object_is_expired(attrs)) {
-          op_ret = -ENOENT;
-          return;
-        }
+      /* Check whether the object has expired. Swift API documentation
+       * stands that we should return 404 Not Found in such case. */
+      if (need_object_expiration() && object_is_expired(attrs)) {
+        op_ret = -ENOENT;
+        return;
       }
     }
 
