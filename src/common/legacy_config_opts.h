@@ -1593,6 +1593,9 @@ OPTION(rgw_obj_tombstone_cache_size, OPT_INT) // how many objects in tombstone c
 OPTION(rgw_gc_max_concurrent_ios, OPT_INT) // Maximum number of concurrent io operations
                                            // per single rgw gc instance
 OPTION(rgw_gc_max_list, OPT_INT) // Maximum number of entries per rgw gc_list op
+OPTION(rgw_remove_object_always_bypass_gc, OPT_BOOL) // always bypass gc
+OPTION(rgw_remove_object_max_concurrent_ios, OPT_INT) // Maximum number of concurrent io operations
+                                                          // per single rgw object remove request
 
 OPTION(rgw_data_log_window, OPT_INT) // data log entries window (in seconds)
 OPTION(rgw_data_log_changes_size, OPT_INT) // number of in-memory entries to hold for data changes log
