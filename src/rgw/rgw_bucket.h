@@ -178,7 +178,18 @@ extern int rgw_unlink_bucket(RGWRados *store, const rgw_user& user_id,
 
 extern int rgw_remove_object(RGWRados *store, RGWBucketInfo& bucket_info, rgw_bucket& bucket, rgw_obj_key& key);
 extern int rgw_remove_bucket(RGWRados *store, rgw_bucket& bucket, bool delete_children);
-extern int rgw_remove_bucket_bypass_gc(RGWRados *store, rgw_bucket& bucket, int concurrent_max);
+extern int rgw_remove_bucket_bypass_gc(RGWRados *store, rgw_bucket& bucket, int concurrent_max,
+                                       bool keep_index_consistent);
+extern int rgw_remove_object_bypass_gc(RGWRados *store,
+                                       rgw_bucket& bucket, RGWBucketInfo& info,
+                                       RGWObjectCtx& obj_ctx, cls_rgw_obj_key& key,
+                                       int concurrent_max, bool keep_index_consistent,
+                                       bool wait_for_completion,
+                                       std::list<librados::AioCompletion*> &handles);
+extern int rgw_remove_object_chunks(RGWRados *store, RGWBucketInfo& info,
+                                    RGWObjManifest& manifest,
+                                    int concurrent_max, bool wait_for_completion,
+                                    std::list<librados::AioCompletion*> &handles);
 
 extern int rgw_bucket_set_attrs(RGWRados *store, RGWBucketInfo& bucket_info,
                                 map<string, bufferlist>& attrs,
