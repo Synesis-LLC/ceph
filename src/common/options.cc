@@ -5311,6 +5311,14 @@ std::vector<Option> get_rgw_options() {
     .set_default(1000)
     .set_description("Maximum number of entries per rgw gc_list op"),
 
+    Option("rgw_remove_object_always_bypass_gc", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(false)
+    .set_description("Always bypass gc"),
+
+    Option("rgw_remove_object_max_concurrent_ios", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    .set_default(32)
+    .set_description("Maximum number of concurrent io operations per single rgw object remove request"),
+
     Option("rgw_bucket_default_quota_max_size", Option::TYPE_INT, Option::LEVEL_ADVANCED)
     .set_default(-1)
     .set_description("Default quota for total size in a bucket")
