@@ -619,12 +619,13 @@ int rgw_remove_object_bypass_gc(RGWRados *store,
   ret = store->get_obj_state(&obj_ctx, info, obj, &astate, false);
   if (ret == -ENOENT) {
     dout(1) << "WARNING: cannot find obj state for obj " << obj.get_oid() << dendl;
-    return 0;
   }
   if (ret < 0) {
     lderr(store->ctx()) << "ERROR: get obj state returned with error " << ret << dendl;
     return ret;
   }
+
+  uint64_t obj_size = astate->size;
 
   if (astate->has_manifest) {
     RGWObjManifest& manifest = astate->manifest;
@@ -632,7 +633,6 @@ int rgw_remove_object_bypass_gc(RGWRados *store,
     rgw_obj head_obj = manifest.get_obj();
     rgw_raw_obj raw_head_obj;
     store->obj_to_raw(info.placement_rule, head_obj, &raw_head_obj);
-    uint64_t obj_size = astate->size;
 
     for (; miter != manifest.obj_end() && max_aio--; ++miter) {
       if (!max_aio) {
@@ -657,15 +657,21 @@ int rgw_remove_object_bypass_gc(RGWRados *store,
       }
     } // for all shadow objs
 
-    ret = store->delete_obj_aio(head_obj, info, astate, handles, keep_index_consistent);
+    ret = store->delete_obj_aio(obj, info, astate, handles, keep_index_consistent);
     if (ret < 0) {
       lderr(store->ctx()) << "ERROR: delete obj aio failed with " << ret << dendl;
       return ret;
     }
-
-    /* update quota cache */
-    store->update_stats(info.owner, bucket, -1, 0, obj_size);
+  } else if (keep_index_consistent) {
+    ret = store->delete_obj_index(obj, astate);
+    if (ret < 0) {
+      lderr(store->ctx()) << "ERROR: failed to delete obj index with ret=" << ret << dendl;
+      return ret;
+    }
   }
+
+  /* update quota cache */
+  store->update_stats(info.owner, bucket, -1, 0, obj_size);
 
   if (!max_aio) {
     ret = drain_handles(handles);
