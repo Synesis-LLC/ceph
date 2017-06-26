@@ -1,14 +1,19 @@
 #!/bin/sh -x
+
+MODE=Debug # Release
+
 git submodule update --init --recursive
 if test -e build; then
     echo 'build dir already exists; rm -rf build and re-run'
     exit 1
 fi
 
-ARGS=""
+ARGS="-DCMAKE_BUILD_TYPE=${MODE}"
+#ARGS="${ARGS} -DALLOCATOR=jemalloc"
+ARGS="${ARGS} -DWITH_TESTS=OFF"
 if which ccache ; then
     echo "enabling ccache"
-    ARGS+="-DWITH_CCACHE=ON"
+    ARGS="${ARGS} -DWITH_CCACHE=ON"
 fi
 
 mkdir build
