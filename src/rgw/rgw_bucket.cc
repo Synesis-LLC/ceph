@@ -602,16 +602,62 @@ static int drain_handles(list<librados::AioCompletion *>& pending)
   return ret;
 }
 
+int rgw_remove_object_chunks(RGWRados *store, RGWBucketInfo& info,
+                             RGWObjManifest& manifest,
+                             int concurrent_max, bool wait_for_completion,
+                             std::list<librados::AioCompletion*> &handles)
+{
+  int ret;
+
+  RGWObjManifest::obj_iterator miter = manifest.obj_begin();
+  rgw_obj head_obj = manifest.get_obj();
+  rgw_raw_obj raw_head_obj;
+  store->obj_to_raw(info.placement_rule, head_obj, &raw_head_obj);
+
+  // for all shadow objs
+  for (; miter != manifest.obj_end(); ++miter) {
+    if (handles.size() >= concurrent_max) {
+      ret = drain_handles(handles);
+      if (ret < 0) {
+        lderr(store->ctx()) << "ERROR: could not drain handles as aio completion returned with " << ret << dendl;
+        return ret;
+      }
+    }
+
+    rgw_raw_obj last_obj = miter.get_location().get_raw_obj(store);
+    if (last_obj == raw_head_obj) {
+      // have the head obj deleted at the end
+      continue;
+    }
+
+    ret = store->delete_raw_obj_aio(last_obj, handles);
+    if (ret < 0) {
+      lderr(store->ctx()) << "ERROR: delete raw obj aio failed with " << ret << dendl;
+      return ret;
+    }
+  }
+
+  if (wait_for_completion) {
+    ret = drain_handles(handles);
+    if (ret < 0) {
+      lderr(store->ctx()) << "ERROR: could not drain handles as aio completion returned with " << ret << dendl;
+      return ret;
+    }
+  }
+
+  return 0;
+}
+
 int rgw_remove_object_bypass_gc(RGWRados *store,
                                 rgw_bucket& bucket, RGWBucketInfo& info,
                                 RGWObjectCtx& obj_ctx, cls_rgw_obj_key& key,
                                 int concurrent_max, bool keep_index_consistent,
+                                bool wait_for_completion,
                                 std::list<librados::AioCompletion*> &handles)
 {
   dout(20) << __func__ << ": bucket=" << bucket.name << ", obj=" << key.name << dendl;
 
   int ret;
-  int max_aio = concurrent_max;
   RGWObjState *astate = NULL;
 
   rgw_obj obj(bucket, key);
@@ -628,34 +674,11 @@ int rgw_remove_object_bypass_gc(RGWRados *store,
   uint64_t obj_size = astate->size;
 
   if (astate->has_manifest) {
-    RGWObjManifest& manifest = astate->manifest;
-    RGWObjManifest::obj_iterator miter = manifest.obj_begin();
-    rgw_obj head_obj = manifest.get_obj();
-    rgw_raw_obj raw_head_obj;
-    store->obj_to_raw(info.placement_rule, head_obj, &raw_head_obj);
-
-    for (; miter != manifest.obj_end() && max_aio--; ++miter) {
-      if (!max_aio) {
-        ret = drain_handles(handles);
-        if (ret < 0) {
-          lderr(store->ctx()) << "ERROR: could not drain handles as aio completion returned with " << ret << dendl;
-          return ret;
-        }
-        max_aio = concurrent_max;
-      }
-
-      rgw_raw_obj last_obj = miter.get_location().get_raw_obj(store);
-      if (last_obj == raw_head_obj) {
-        // have the head obj deleted at the end
-        continue;
-      }
-
-      ret = store->delete_raw_obj_aio(last_obj, handles);
-      if (ret < 0) {
-        lderr(store->ctx()) << "ERROR: delete obj aio failed with " << ret << dendl;
-        return ret;
-      }
-    } // for all shadow objs
+    ret = rgw_remove_object_chunks(store, info, astate->manifest, concurrent_max, false, handles);
+    if (ret < 0) {
+      lderr(store->ctx()) << "ERROR: delete obj chunks failed with " << ret << dendl;
+      return ret;
+    }
 
     ret = store->delete_obj_aio(obj, info, astate, handles, keep_index_consistent);
     if (ret < 0) {
@@ -673,13 +696,12 @@ int rgw_remove_object_bypass_gc(RGWRados *store,
   /* update quota cache */
   store->update_stats(info.owner, bucket, -1, 0, obj_size);
 
-  if (!max_aio) {
+  if (wait_for_completion) {
     ret = drain_handles(handles);
     if (ret < 0) {
       lderr(store->ctx()) << "ERROR: could not drain handles as aio completion returned with " << ret << dendl;
       return ret;
     }
-    max_aio = concurrent_max;
   }
 
   return 0;
@@ -722,7 +744,8 @@ int rgw_remove_bucket_bypass_gc(RGWRados *store, rgw_bucket& bucket,
     std::vector<rgw_bucket_dir_entry>::iterator it = objs.begin();
     for (; it != objs.end(); ++it) {
       ret = rgw_remove_object_bypass_gc(store, bucket, info, obj_ctx, (*it).key,
-                                        concurrent_max, keep_index_consistent, handles);
+                                        concurrent_max, keep_index_consistent, false,
+                                        handles);
       if (ret < 0) {
         lderr(store->ctx()) << "ERROR: remove object failed with " << ret << dendl;
         return ret;

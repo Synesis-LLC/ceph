@@ -8372,15 +8372,23 @@ int RGWRados::Object::complete_atomic_modification()
   if (!state->has_manifest || state->keep_tail)
     return 0;
 
-  cls_rgw_obj_chain chain;
-  store->update_gc_chain(obj, state->manifest, &chain);
+  if (store->ctx()->_conf->rgw_remove_object_always_bypass_gc) {
+    std::list<librados::AioCompletion*> handles;
+    return rgw_remove_object_chunks(store, bucket_info, state->manifest,
+                             store->ctx()->_conf->rgw_remove_object_max_concurrent_ios,
+                             true, /* wait for delete operations to be completed */
+                             handles);
+  } else {
+    cls_rgw_obj_chain chain;
+    store->update_gc_chain(obj, state->manifest, &chain);
 
-  if (chain.empty()) {
-    return 0;
+    if (chain.empty()) {
+      return 0;
+    }
+
+    string tag = state->obj_tag.to_str();
+    return store->gc->send_chain(chain, tag, false);  // do it async
   }
-
-  string tag = state->obj_tag.to_str();
-  return store->gc->send_chain(chain, tag, false);  // do it async
 }
 
 void RGWRados::update_gc_chain(rgw_obj& head_obj, RGWObjManifest& manifest, cls_rgw_obj_chain *chain)
@@ -8625,35 +8633,13 @@ void RGWRados::cls_obj_check_mtime(ObjectOperation& op, const real_time& mtime, 
   cls_rgw_obj_check_mtime(op, mtime, high_precision_time, type);
 }
 
-int RGWRados::Object::Delete::delete_obj_bypass_gc()
-{
-  /* Try to delete object same way like radosgw-admin with --bypass-gc option does. */
-  int max_concurrent_ios = target->store->ctx()->_conf->rgw_remove_object_max_concurrent_ios;
-  std::list<librados::AioCompletion*> handles;
-  cls_rgw_obj_key cls_key(target->obj.key.get_index_key_name(), target->obj.key.instance);
-
-  return rgw_remove_object_bypass_gc(target->store, target->obj.bucket, target->bucket_info,
-                                     target->ctx, cls_key,
-                                     max_concurrent_ios, true,
-                                     handles);
-}
-
-int RGWRados::Object::Delete::delete_obj()
-{
-  if(target->store->ctx()->_conf->rgw_remove_object_always_bypass_gc) {
-    return delete_obj_bypass_gc();
-  } else {
-    return delete_obj_with_gc();
-  }
-}
-
 /**
  * Delete an object.
  * bucket: name of the bucket storing the object
  * obj: name of the object to delete
  * Returns: 0 on success, -ERR# otherwise.
  */
-int RGWRados::Object::Delete::delete_obj_with_gc()
+int RGWRados::Object::Delete::delete_obj()
 {
   RGWRados *store = target->get_store();
   rgw_obj& src_obj = target->get_obj();
