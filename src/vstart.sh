@@ -24,7 +24,7 @@ if [ -e CMakeCache.txt ]; then
   [ -z "$MGR_PYTHON_PATH" ] && MGR_PYTHON_PATH=$CEPH_ROOT/src/pybind/mgr
 fi
 
-# use CEPH_BUILD_ROOT to vstart from a 'make install' 
+# use CEPH_BUILD_ROOT to vstart from a 'make install'
 if [ -n "$CEPH_BUILD_ROOT" ]; then
         [ -z "$CEPH_BIN" ] && CEPH_BIN=$CEPH_BUILD_ROOT/bin
         [ -z "$CEPH_LIB" ] && CEPH_LIB=$CEPH_BUILD_ROOT/lib
@@ -50,7 +50,7 @@ export PYTHONPATH=$PYBIND:$CEPH_LIB/cython_modules/lib.2:$PYTHONPATH
 export LD_LIBRARY_PATH=$CEPH_LIB:$LD_LIBRARY_PATH
 export DYLD_LIBRARY_PATH=$CEPH_LIB:$DYLD_LIBRARY_PATH
 # Suppress logging for regular use that indicated that we are using a
-# development version. vstart.sh is only used during testing and 
+# development version. vstart.sh is only used during testing and
 # development
 export CEPH_DEV=1
 
@@ -649,11 +649,11 @@ EOF
         run 'mgr' $CEPH_BIN/ceph-mgr -i $name $ARGS
     done
 
-    SF=`mktemp`
-    ceph_adm tell mgr restful create-self-signed-cert
-    ceph_adm tell mgr restful create-key admin -o $SF
-    RESTFUL_SECRET=`cat $SF`
-    rm $SF
+#    SF=`mktemp`
+#    ceph_adm tell mgr restful create-self-signed-cert
+#    ceph_adm tell mgr restful create-key admin -o $SF
+#    RESTFUL_SECRET=`cat $SF`
+#    rm $SF
 }
 
 start_mds() {
