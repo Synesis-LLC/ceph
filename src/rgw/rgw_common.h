@@ -2320,4 +2320,7 @@ static constexpr uint32_t MATCH_POLICY_STRING = 0x08;
 extern bool match_policy(boost::string_view pattern, boost::string_view input,
                          uint32_t flag);
 
+int aio_wait(librados::AioCompletion *handle);
+int drain_handles(std::list<librados::AioCompletion *>& pending);
+
 #endif
