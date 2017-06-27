@@ -156,9 +156,10 @@ int RGWGC::process(int index, int max_secs)
 
   string marker;
   bool truncated;
-  IoCtx *ctx = new IoCtx;
+  std::list<librados::AioCompletion*> handles;
+  size_t concurrent_max = store->ctx()->_conf->rgw_gc_max_concurrent_ios;
+  int max = store->ctx()->_conf->rgw_gc_max_list;
   do {
-    int max = 100;
     std::list<cls_rgw_gc_obj_info> entries;
     ret = cls_rgw_gc_list(store->gc_pool_ctx, obj_names[index], marker, max, true, entries, &truncated);
     if (ret == -ENOENT) {
@@ -184,30 +185,20 @@ int RGWGC::process(int index, int max_secs)
       for (liter = chain.objs.begin(); liter != chain.objs.end(); ++liter) {
         cls_rgw_obj& obj = *liter;
 
-        if (obj.pool != last_pool) {
-          delete ctx;
-          ctx = new IoCtx;
-	  ret = rgw_init_ioctx(store->get_rados_handle(), obj.pool, *ctx);
-	  if (ret < 0) {
-	    dout(0) << "ERROR: failed to create ioctx pool=" << obj.pool << dendl;
-	    continue;
-	  }
-          last_pool = obj.pool;
+        if (handles.size() >= concurrent_max) {
+          ret = drain_handles(handles);
+          if (ret < 0) {
+            lderr(store->ctx()) << "ERROR: aio completion returned with " << ret << dendl;
+          }
         }
 
-        ctx->locator_set_key(obj.loc);
+        rgw_raw_obj raw_obj = rgw_raw_obj(rgw_pool(obj.pool), obj.key.name, obj.loc);
 
-        const string& oid = obj.key.name; /* just stored raw oid there */
-
-	dout(0) << "gc::process: removing " << obj.pool << ":" << obj.key.name << dendl;
-	ObjectWriteOperation op;
-	cls_refcount_put(op, info.tag, true);
-        ret = ctx->operate(oid, &op);
-	if (ret == -ENOENT)
-	  ret = 0;
+        dout(5) << "gc::process: removing " << obj.pool << ":" << obj.key.name << dendl;
+        ret = store->delete_raw_obj_aio(raw_obj, handles);
         if (ret < 0) {
+          dout(0) << "failed to remove " << obj.pool << ":" << obj.key.name << "@" << obj.loc << dendl;
           remove_tag = false;
-          dout(0) << "failed to remove " << obj.pool << ":" << oid << "@" << obj.loc << dendl;
         }
 
         if (going_down()) // leave early, even if tag isn't removed, it's ok
@@ -224,11 +215,16 @@ int RGWGC::process(int index, int max_secs)
     }
   } while (truncated);
 
+  ret = drain_handles(handles);
+  if (ret < 0) {
+    lderr(store->ctx()) << "ERROR: aio completion returned with " << ret << dendl;
+    return ret;
+  }
+
 done:
   if (!remove_tags.empty())
     RGWGC::remove(index, remove_tags);
   l.unlock(&store->gc_pool_ctx, obj_names[index]);
-  delete ctx;
   return 0;
 }
 

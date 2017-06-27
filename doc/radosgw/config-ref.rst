@@ -209,6 +209,20 @@ Ceph configuration file, the default value will be set automatically.
 :Default: ``3600``
 
 
+``rgw gc max concurrent ios``
+
+:Description: Maximum number of concurrent io operations per rgw gc instance.
+:Type: Integer
+:Default: ``200``
+
+
+``rgw gc max list``
+
+:Description: Maximum number of entries per rgw gc_list op.
+:Type: Integer
+:Default: ``1000``
+
+
 ``rgw s3 success create obj status``
 
 :Description: The alternate success status response for ``create-obj``.

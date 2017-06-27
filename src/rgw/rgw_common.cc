@@ -1629,3 +1629,26 @@ int match(const string& pattern, const string& input, int flag)
     last_pos_input = cur_pos_input + 1;
   }
 }
+
+int aio_wait(librados::AioCompletion *handle)
+{
+  librados::AioCompletion *c = (librados::AioCompletion *)handle;
+  c->wait_for_safe();
+  int ret = c->get_return_value();
+  c->release();
+  return ret;
+}
+
+int drain_handles(std::list<librados::AioCompletion *>& pending)
+{
+  int ret = 0;
+  while (!pending.empty()) {
+    librados::AioCompletion *handle = pending.front();
+    pending.pop_front();
+    int r = aio_wait(handle);
+    if (r < 0) {
+      ret = r;
+    }
+  }
+  return ret;
+}
