@@ -997,9 +997,9 @@ do_rgw()
     n=$(($CEPH_NUM_RGW - 1))
     i=0
     for rgw in j k l m n o p q r s t u v; do
-	echo start rgw on http://localhost:$((CEPH_RGW_PORT + i))
-	run 'rgw' $RGWSUDO $CEPH_BIN/radosgw -c $conf_fn --log-file=${CEPH_OUT_DIR}/rgw.$rgw.log ${RGWDEBUG} --debug-ms=1 -n client.rgw "--rgw_frontends=${rgw_frontend} port=$((CEPH_RGW_PORT + i))"
-	i=$(($i + 1))
+        echo start rgw on http://localhost:$((CEPH_RGW_PORT + i))
+        run 'rgw' $RGWSUDO $CEPH_BIN/radosgw -c $conf_fn --log-file=${CEPH_OUT_DIR}/rgw.$rgw.log ${RGWDEBUG} -n client.rgw "--rgw_frontends=${rgw_frontend} port=$((CEPH_RGW_PORT + i))"
+        i=$(($i + 1))
         [ $i -eq $CEPH_NUM_RGW ] && break
     done
 }
