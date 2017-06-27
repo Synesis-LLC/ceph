@@ -579,29 +579,6 @@ int rgw_remove_bucket(RGWRados *store, rgw_bucket& bucket, bool delete_children)
   return ret;
 }
 
-static int aio_wait(librados::AioCompletion *handle)
-{
-  librados::AioCompletion *c = (librados::AioCompletion *)handle;
-  c->wait_for_safe();
-  int ret = c->get_return_value();
-  c->release();
-  return ret;
-}
-
-static int drain_handles(list<librados::AioCompletion *>& pending)
-{
-  int ret = 0;
-  while (!pending.empty()) {
-    librados::AioCompletion *handle = pending.front();
-    pending.pop_front();
-    int r = aio_wait(handle);
-    if (r < 0) {
-      ret = r;
-    }
-  }
-  return ret;
-}
-
 int rgw_remove_object_chunks(RGWRados *store, RGWBucketInfo& info,
                              RGWObjManifest& manifest,
                              int concurrent_max, bool wait_for_completion,

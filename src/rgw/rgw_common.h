@@ -2302,4 +2302,8 @@ namespace {
 }
 
 int match(const std::string& pattern, const std::string& input, uint32_t flag);
+
+int aio_wait(librados::AioCompletion *handle);
+int drain_handles(std::list<librados::AioCompletion *>& pending);
+
 #endif

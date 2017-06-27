@@ -228,6 +228,20 @@ instances or all radosgw-admin commands can be put into the ``[global]`` or the
 :Default: ``32``
 
 
+``rgw gc max concurrent ios``
+
+:Description: Maximum number of concurrent io operations per rgw gc instance.
+:Type: Integer
+:Default: ``200``
+
+
+``rgw gc max list``
+
+:Description: Maximum number of entries per rgw gc_list op.
+:Type: Integer
+:Default: ``1000``
+
+
 ``rgw s3 success create obj status``
 
 :Description: The alternate success status response for ``create-obj``.
