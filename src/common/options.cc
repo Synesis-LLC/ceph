@@ -5303,6 +5303,14 @@ std::vector<Option> get_rgw_options() {
         "The default quota configuration for max number of objects in a bucket. A "
         "negative number means 'unlimited'."),
 
+    Option("rgw_gc_max_concurrent_ios", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    .set_default(200)
+    .set_description("Maximum number of concurrent io operations per single rgw gc instance"),
+
+    Option("rgw_gc_max_list", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    .set_default(1000)
+    .set_description("Maximum number of entries per rgw gc_list op"),
+
     Option("rgw_bucket_default_quota_max_size", Option::TYPE_INT, Option::LEVEL_ADVANCED)
     .set_default(-1)
     .set_description("Default quota for total size in a bucket")
