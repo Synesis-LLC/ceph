@@ -4426,6 +4426,14 @@ std::vector<Option> rgw_options = {
   .set_default(1000)
   .set_description(""),
 
+  Option("rgw_gc_max_concurrent_ios", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+  .set_default(200)
+  .set_description("Maximum number of concurrent io operations per single rgw gc instance"),
+
+  Option("rgw_gc_max_list", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+  .set_default(1000)
+  .set_description("Maximum number of entries per rgw gc_list op"),
+
   Option("rgw_data_log_window", Option::TYPE_INT, Option::LEVEL_ADVANCED)
   .set_default(30)
   .set_description(""),
