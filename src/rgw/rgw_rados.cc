@@ -8267,11 +8267,6 @@ int RGWRados::Object::Delete::delete_obj()
     }
   }
 
-  if (!state->exists) {
-    target->invalidate_state();
-    return -ENOENT;
-  }
-
   r = target->prepare_atomic_modification(op, false, NULL, NULL, NULL, true);
   if (r < 0)
     return r;
@@ -8288,8 +8283,10 @@ int RGWRados::Object::Delete::delete_obj()
   if (r < 0)
     return r;
 
-  store->remove_rgw_head_obj(op);
-  r = ref.ioctx.operate(ref.oid, &op);
+  if (state->exists) {
+    store->remove_rgw_head_obj(op);
+    r = ref.ioctx.operate(ref.oid, &op);
+  }
   bool need_invalidate = false;
   if (r == -ECANCELED) {
     /* raced with another operation, we can regard it as removed */
@@ -8300,10 +8297,12 @@ int RGWRados::Object::Delete::delete_obj()
 
   int64_t poolid = ref.ioctx.get_id();
   if (r >= 0) {
-    tombstone_cache_t *obj_tombstone_cache = store->get_tombstone_cache();
-    if (obj_tombstone_cache) {
-      tombstone_entry entry{*state};
-      obj_tombstone_cache->add(obj, entry);
+    if (state->exists) {
+      tombstone_cache_t *obj_tombstone_cache = store->get_tombstone_cache();
+      if (obj_tombstone_cache) {
+        tombstone_entry entry{*state};
+        obj_tombstone_cache->add(obj, entry);
+      }
     }
     r = index_op.complete_del(poolid, ref.ioctx.get_last_version(), state->mtime, params.remove_objs);
   } else {
