@@ -96,6 +96,11 @@ bool Throttle::_wait(int64_t c)
   bool waited = false;
   if (_should_wait(c) || !cond.empty()) { // always wait behind other waiters.
     Cond *cv = new Cond;
+    if (cv == nullptr) {
+      ldout(cct, 0) << "nullptr in " << __func__ << dendl;
+      return false;
+    }
+
     cond.push_back(cv);
     waited = true;
     ldout(cct, 2) << "_wait waiting..." << dendl;
