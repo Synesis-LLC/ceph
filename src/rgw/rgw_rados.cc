@@ -2562,8 +2562,10 @@ int RGWPutObjProcessor_Atomic::write_data(bufferlist& bl, off_t ofs, void **phan
 
   *pobj = cur_obj;
 
-  if (!bl.length())
+  if (!bl.length()) {
+    *phandle = nullptr;
     return 0;
+  }
 
   return RGWPutObjProcessor_Aio::handle_obj_data(cur_obj, bl, ofs - cur_part_ofs, ofs, phandle, exclusive);
 }
@@ -2688,7 +2690,7 @@ int RGWPutObjProcessor_Atomic::complete_writing_data()
     obj_len = (uint64_t)first_chunk.length();
   }
   while (pending_data_bl.length()) {
-    void *handle;
+    void *handle = nullptr;
     rgw_raw_obj obj;
     uint64_t max_write_size = MIN(max_chunk_size, (uint64_t)next_part_ofs - data_ofs);
     if (max_write_size > pending_data_bl.length()) {
@@ -3343,7 +3345,7 @@ int RGWRados::get_required_alignment(const rgw_pool& pool, uint64_t *alignment)
 
 int RGWRados::get_max_chunk_size(const rgw_pool& pool, uint64_t *max_chunk_size)
 {
-  uint64_t alignment;
+  uint64_t alignment = 0;
   int r = get_required_alignment(pool, &alignment);
   if (r < 0) {
     return r;
