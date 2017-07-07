@@ -100,12 +100,15 @@ bool Throttle::_wait(int64_t c)
       ldout(cct, 0) << "nullptr in " << __func__ << dendl;
       return false;
     }
+    ldout(cct, 0) << __func__  << ":" << __LINE__ << "cv=" << cv << dendl;
 
     cond.push_back(cv);
     waited = true;
     ldout(cct, 2) << "_wait waiting..." << dendl;
     if (logger)
       start = ceph_clock_now();
+
+    ldout(cct, 0) << __func__  << ":" << __LINE__ << "cv=" << cv << dendl;
 
     do {
       cv->Wait(lock);
