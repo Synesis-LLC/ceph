@@ -1,12 +1,21 @@
 #!/bin/sh -x
+
+MODE=Debug
+#MODE=Release
+
 git submodule update --init --recursive
 if test -e build; then
     echo 'build dir already exists; rm -rf build and re-run'
     exit 1
 fi
+
+ARGS="-DCMAKE_BUILD_TYPE=${MODE}"
+#ARGS="${ARGS} -DALLOCATOR=jemalloc"
+ARGS="${ARGS} -DWITH_TESTS=OFF"
+
 mkdir build
 cd build
-cmake -DBOOST_J=$(nproc) "$@" ..
+cmake -DBOOST_J=$(nproc) $ARGS "$@" ..
 
 # minimal config to find plugins
 cat <<EOF > ceph.conf
