@@ -1,3 +1,10 @@
+ceph (12.1.2-1.1) UNRELEASED; urgency=medium
+
+  * Testing bypassing gc in rgw.
+  * 
+
+ -- Aleksei <aleksei@debian.aleksei.gutikov>  Thu, 03 Aug 2017 11:12:20 +0300
+
 ceph (12.1.2-1) stable; urgency=medium
 
   * New upstream release
