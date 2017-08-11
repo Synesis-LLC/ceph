@@ -605,7 +605,7 @@ int rgw_remove_object_chunks(RGWRados *store, RGWBucketInfo& info,
     if (handles.size() >= concurrent_max) {
       ret = drain_handles(handles);
       if (ret < 0) {
-        lderr(store->ctx()) << "ERROR: could not drain handles as aio completion returned with " << ret << dendl;
+        lderr(store->ctx()) << "ERROR: " << __func__ << ":" << __LINE__ << " could not drain handles as aio completion returned with " << ret << dendl;
         return ret;
       }
     }
@@ -626,7 +626,7 @@ int rgw_remove_object_chunks(RGWRados *store, RGWBucketInfo& info,
   if (wait_for_completion) {
     ret = drain_handles(handles);
     if (ret < 0) {
-      lderr(store->ctx()) << "ERROR: could not drain handles as aio completion returned with " << ret << dendl;
+      lderr(store->ctx()) << "ERROR: " << __func__ << ":" << __LINE__ << " could not drain handles as aio completion returned with " << ret << dendl;
       return ret;
     }
   }
@@ -685,7 +685,7 @@ int rgw_remove_object_bypass_gc(RGWRados *store,
   if (wait_for_completion) {
     ret = drain_handles(handles);
     if (ret < 0) {
-      lderr(store->ctx()) << "ERROR: could not drain handles as aio completion returned with " << ret << dendl;
+      lderr(store->ctx()) << "ERROR: " << __func__ << ":" << __LINE__ << " could not drain handles as aio completion returned with " << ret << dendl;
       return ret;
     }
   }
@@ -753,7 +753,7 @@ int rgw_remove_bucket_bypass_gc(RGWRados *store, rgw_bucket& bucket,
 
   ret = drain_handles(handles);
   if (ret < 0) {
-    lderr(store->ctx()) << "ERROR: could not drain handles as aio completion returned with " << ret << dendl;
+    lderr(store->ctx()) << "ERROR: " << __func__ << ":" << __LINE__ << " could not drain handles as aio completion returned with " << ret << dendl;
     return ret;
   }
 
