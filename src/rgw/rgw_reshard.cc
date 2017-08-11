@@ -151,7 +151,7 @@ public:
     for (auto& shard : target_shards) {
       int ret = shard->wait_all_aio();
       if (ret < 0) {
-        ldout(store->ctx(), 20) << __func__ << ": shard->wait_all_aio() returned ret=" << ret << dendl;
+        ldout(store->ctx(), 0) << __func__ << ": shard->wait_all_aio() returned ret=" << ret << dendl;
       }
     }
   }
@@ -732,7 +732,7 @@ int RGWReshardWait::block_while_resharding(RGWRados::BucketShard *bs, string *ne
       *new_bucket_id = entry.new_bucket_instance_id;
       return 0;
     }
-    ldout(store->ctx(), 20) << "NOTICE: reshard still in progress; " << (i < num_retries - 1 ? "retrying" : "too many retries") << dendl;
+    ldout(store->ctx(), 0) << "NOTICE: reshard still in progress; " << (i < num_retries - 1 ? "retrying" : "too many retries") << dendl;
     /* needed to unlock as clear resharding uses the same lock */
 
     if (i == num_retries - 1) {
@@ -774,7 +774,7 @@ int RGWReshard::process_single_logshard(int logshard_num)
 
   int ret = l.lock_exclusive(&store->reshard_pool_ctx, logshard_oid);
   if (ret == -EBUSY) { /* already locked by another processor */
-    ldout(store->ctx(), 5) << __func__ << "(): failed to acquire lock on " << logshard_oid << dendl;
+    ldout(store->ctx(), 0) << __func__ << "(): failed to acquire lock on " << logshard_oid << dendl;
     return ret;
   }
 
@@ -784,14 +784,14 @@ int RGWReshard::process_single_logshard(int logshard_num)
     std::list<cls_rgw_reshard_entry> entries;
     ret = list(logshard_num, marker, max_entries, entries, &truncated);
     if (ret < 0) {
-      ldout(cct, 10) << "cannot list all reshards in logshard oid=" << logshard_oid << dendl;
+      ldout(cct, 0) << "cannot list all reshards in logshard oid=" << logshard_oid << dendl;
       continue;
     }
 
     for(auto& entry: entries) {
       if(entry.new_instance_id.empty()) {
 
-	ldout(store->ctx(), 20) << __func__ << " resharding " << entry.bucket_name  << dendl;
+	ldout(store->ctx(), 0) << __func__ << " resharding " << entry.bucket_name  << dendl;
 
 	RGWObjectCtx obj_ctx(store);
 	rgw_bucket bucket;
@@ -816,7 +816,7 @@ int RGWReshard::process_single_logshard(int logshard_num)
 	  return ret;
 	}
 
-	ldout (store->ctx(), 20) <<  " removing entry" << entry.bucket_name<< dendl;
+	ldout (store->ctx(), 0) <<  " removing entry" << entry.bucket_name<< dendl;
 
       	ret = remove(entry);
 	if (ret < 0) {
@@ -831,7 +831,7 @@ int RGWReshard::process_single_logshard(int logshard_num)
         l.set_renew(true);
         ret = l.lock_exclusive(&store->reshard_pool_ctx, logshard_oid);
         if (ret == -EBUSY) { /* already locked by another processor */
-          ldout(store->ctx(), 5) << __func__ << "(): failed to acquire lock on " << logshard_oid << dendl;
+          ldout(store->ctx(), 0) << __func__ << "(): failed to acquire lock on " << logshard_oid << dendl;
           return ret;
         }
         lock_start_time = now;
@@ -862,7 +862,7 @@ int RGWReshard::process_all_logshards()
     string logshard;
     get_logshard_oid(i, &logshard);
 
-    ldout(store->ctx(), 20) << "proceeding logshard = " << logshard << dendl;
+    ldout(store->ctx(), 0) << "proceeding logshard = " << logshard << dendl;
 
     ret = process_single_logshard(i);
     if (ret <0) {
@@ -899,13 +899,13 @@ void *RGWReshard::ReshardWorker::entry() {
   utime_t last_run;
   do {
     utime_t start = ceph_clock_now();
-    ldout(cct, 2) << "object expiration: start" << dendl;
+    ldout(cct, 0) << "object expiration: start" << dendl;
     if (reshard->process_all_logshards()) {
       /* All shards have been processed properly. Next time we can start
        * from this moment. */
       last_run = start;
     }
-    ldout(cct, 2) << "object expiration: stop" << dendl;
+    ldout(cct, 0) << "object expiration: stop" << dendl;
 
 
     if (reshard->going_down())
