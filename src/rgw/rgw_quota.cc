@@ -978,7 +978,12 @@ public:
 
     if (bucket_stats.num_objects  + num_objs > num_shards * max_objs_per_shard) {
       ldout(store->ctx(), 0) << __func__ << ": resharding needed: stats.num_objects=" << bucket_stats.num_objects
-             << " shard max_objects=" <<  max_objs_per_shard * num_shards << dendl;
+             << " shard max_objects=" <<  max_objs_per_shard * num_shards
+             << " bucket_stats.size=0x" << std::hex << bucket_stats.size
+             << " bucket_stats.size_rounded=0x" << std::hex << bucket_stats.size_rounded
+             << " bucket_stats.size_utilized=0x" << std::hex << bucket_stats.size_utilized
+             << " bucket_stats.num_objects=0x" << std::hex << bucket_stats.num_objects
+             << dendl;
       need_resharding = true;
       if (suggested_num_shards) {
         *suggested_num_shards = (bucket_stats.num_objects  + num_objs) * 2 / max_objs_per_shard;
