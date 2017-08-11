@@ -7159,7 +7159,7 @@ int RGWRados::Object::Write::_do_write_meta(uint64_t size, uint64_t accounted_si
 
   r = target->complete_atomic_modification();
   if (r < 0) {
-    ldout(store->ctx(), 0) << "ERROR: complete_atomic_modification returned r=" << r << dendl;
+    ldout(store->ctx(), 0) << "ERROR: " << __func__ << ":" << __LINE__ << " complete_atomic_modification returned r=" << r << dendl;
   }
 
   r = index_op->complete(poolid, epoch, size, accounted_size,
@@ -9193,7 +9193,7 @@ int RGWRados::Object::Delete::delete_obj()
     
     int ret = target->complete_atomic_modification();
     if (ret < 0) {
-      ldout(store->ctx(), 0) << "ERROR: complete_atomic_modification returned ret=" << ret << dendl;
+      ldout(store->ctx(), 0) << "ERROR: " << __func__ << ":" << __LINE__ << " complete_atomic_modification returned r=" << r << dendl;
     }
     /* other than that, no need to propagate error */
   } else {
