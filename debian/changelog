@@ -1,3 +1,11 @@
+ceph (12.1.4-1.1) UNRELEASED; urgency=medium
+
+  * trace bucket index resharding.
+  * bypass-gc testing.
+  *
+
+ -- Aleksei <aleksei@debian.aleksei.gutikov>  Wed, 16 Aug 2017 11:26:17 +0300
+
 ceph (12.1.4-1) stable; urgency=medium
 
   * New upstream release
