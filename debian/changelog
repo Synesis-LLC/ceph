@@ -1,9 +1,10 @@
-ceph (12.1.1-1.1) UNRELEASED; urgency=medium
+ceph (12.1.1-1.2) UNRELEASED; urgency=medium
 
   * Testing bypassing gc in rgw
+  * trace resharding
   * 
 
- -- Aleksei <aleksei@debian.aleksei.gutikov>  Wed, 19 Jul 2017 15:14:59 +0300
+ -- Aleksei <aleksei@debian.aleksei.gutikov>  Thu, 17 Aug 2017 15:27:32 +0300
 
 ceph (12.1.1-1) stable; urgency=medium
 
