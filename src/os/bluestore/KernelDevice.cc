@@ -299,6 +299,11 @@ int KernelDevice::flush()
     cct->_log->flush();
     _exit(1);
   }
+
+  if (cct->_conf->bdev_flush_delay_us > 0) {
+    usleep(cct->_conf->bdev_flush_delay_us);
+  }
+
   utime_t start = ceph_clock_now();
   int r = ::fdatasync(fd_direct);
   utime_t end = ceph_clock_now();

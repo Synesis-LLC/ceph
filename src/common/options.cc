@@ -3181,6 +3181,10 @@ std::vector<Option> get_global_options() {
     .set_default(2)
     .set_description(""),
 
+    Option("bdev_flush_delay_us", Option::TYPE_INT, Option::LEVEL_DEV)
+    .set_default(0)
+    .set_description(""),
+
     Option("bdev_aio", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(true)
     .set_description(""),

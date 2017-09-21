@@ -964,6 +964,7 @@ OPTION(memstore_page_size, OPT_U64)
 OPTION(bdev_debug_inflight_ios, OPT_BOOL)
 OPTION(bdev_inject_crash, OPT_INT)  // if N>0, then ~ 1/N IOs will complete before we crash on flush.
 OPTION(bdev_inject_crash_flush_delay, OPT_INT) // wait N more seconds on flush
+OPTION(bdev_flush_delay_us, OPT_INT)
 OPTION(bdev_aio, OPT_BOOL)
 OPTION(bdev_aio_poll_ms, OPT_INT)  // milliseconds
 OPTION(bdev_aio_max_queue_depth, OPT_INT)
