@@ -1893,6 +1893,10 @@ std::vector<Option> get_global_options() {
     .set_default(8)
     .set_description(""),
 
+    Option("osd_op_delay_us", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    .set_default(0)
+    .set_description(""),
+
     Option("osd_op_queue", Option::TYPE_STR, Option::LEVEL_ADVANCED)
     .set_default("wpq")
     .set_enum_allowed( { "wpq", "prioritized", "mclock_opclass", "mclock_client", "debug_random" } )
@@ -3012,6 +3016,10 @@ std::vector<Option> get_global_options() {
 
     Option("bdev_inject_crash_flush_delay", Option::TYPE_INT, Option::LEVEL_DEV)
     .set_default(2)
+    .set_description(""),
+
+    Option("bdev_flush_delay_us", Option::TYPE_INT, Option::LEVEL_DEV)
+    .set_default(0)
     .set_description(""),
 
     Option("bdev_aio", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
