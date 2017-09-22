@@ -1,11 +1,22 @@
 
 """
-    Automatically reweight osds according to performance stats (currently latencies).
+    Automatically reweight osds according to performance stats (latencies).
+    =======================================================================
+
+    Problem.
+    --------
+
+    osd:        3   5    8  1 2 7   6           9      0      4
+    |-----------*---*----*--*-*-*---*-----------*------*------*----------> latency, ms
+            10      20      30      40  ... 100 ... 300 ...  1500
+
+    Principle overview.
+    -------------------
+
+    Feature list.
+    -------------
 
 
-    osd:        3 4 5    8  1 2 7   6                   0
-    |-----------*-*-*----*--*-*-*---*-------------------*----------> latency, ms
-            10      20      30      40      ...     1500    1510
 
 
 
@@ -19,12 +30,15 @@ import pprint
 import threading
 import datetime
 import math
+import operator
 
 DEFAULT_ADDR = '::'
 DEFAULT_PORT = 9284
 
 DEFAULT_ENABLE_DEBUG = True
 DEFAULT_DRY_RUN = False
+DEFAULT_DUMP_LATENCY = True
+DEFAULT_DUMP_LATENCY_FILENAME = "/tmp/ceph_osd_latencies.json"
 
 DEFAULT_PERIOD = 5 # process stats every 5 seconds
 DEFAULT_WINDOW = 10 # width of window in periods
@@ -45,6 +59,9 @@ DEFAULT_CLUSTERING_DISTANCE_THRESHOLD = 0.8
 
 # reweight +/-this step then wait for backfill completion
 DEFAULT_REWEIGHT_STEP = 0.05
+
+# limit max number of throttled osds
+DEFAULT_MAX_THROTTLED_OSDS = 0.2
 
 
 _global_instance = {'plugin': None}
@@ -161,7 +178,10 @@ class Module(MgrModule):
         if len(lats) < 3:
             return {}
 
-        #TODO: add option - different method finding dominant distribution - MLE for mixture of 1-d gaussians
+        #TODO: collect set of lats and draw distribution of lats and distribution of distancies
+        #TODO: move algorythms to separate files, implement framework for alg testing on collected data
+        #TODO: gmm_mle + clustering
+        #TODO: 80% closest to median
         neighbours = get_nearest(lats, self.distance_threshold)
         self.debug(neighbours, "neighbours")
         clusters = get_clusters(neighbours)
@@ -195,7 +215,7 @@ class Module(MgrModule):
 
         return new_weights
 
-    def process_lats(self, lats, min_threshold):
+    def process_osd_lats(self, lats, min_threshold):
         if len(lats[0]) < 3 or len(lats[1]) < 3 or len(lats[0]) != len(lats[1]):
             self.new_weights = {}
             return
@@ -213,16 +233,27 @@ class Module(MgrModule):
         if 'osd_stats' not in self.osd_stats or len(self.osd_stats['osd_stats']) == 0:
             return False
 
-        self.osd_class = {}
         try:
-            self.osd_class = dict([(o['id'], o['class']) for o in self.osd_map_crush['devices']
-                                   if 'class' in o and 'id' in o])
-            self.debug(self.osd_class)
             self.osd_apply_lats = dict([(o['osd'], o['perf_stat']['apply_latency_ms']) for o in self.osd_stats['osd_stats']
                                         if 'osd' in o and 'perf_stat' in o and 'apply_latency_ms' in o['perf_stat']])
             self.osd_commit_lats = dict([(o['osd'], o['perf_stat']['commit_latency_ms']) for o in self.osd_stats['osd_stats']
                                         if 'osd' in o and 'perf_stat' in o and 'commit_latency_ms' in o['perf_stat']])
             self.debug({'apply': self.osd_apply_lats, 'commit': self.osd_commit_lats})
+        except Exception as e:
+            self.debug(e)
+            return False
+
+        if self.dump_latency:
+            with open(self.dump_latency_filename, "a+") as dumpfile:
+                dumpfile.write(json.dumps({"apply":self.osd_apply_lats, "commit":self.osd_commit_lats}))
+                dumpfile.write("\n")
+
+    def aggregate_lats(self):
+        self.osd_class = {}
+        try:
+            self.osd_class = dict([(o['id'], o['class']) for o in self.osd_map_crush['devices']
+                                   if 'class' in o and 'id' in o])
+            self.debug(self.osd_class)
         except Exception as e:
             self.debug(e)
             return False
@@ -272,6 +303,9 @@ class Module(MgrModule):
         return True
 
     def recalculate_weights(self):
+        if not self.aggregate_lats():
+            return False
+
         self.osd_map = self.get("osd_map")
         
         if 'osds' not in self.osd_map or len(self.osd_map['osds']) == 0:
@@ -279,12 +313,27 @@ class Module(MgrModule):
 
         try:
             self.osd_state = dict([(o['osd'], {'up':o['up'], 'in':o['in']}) for o in self.osd_map['osds']])
-            self.weights = dict([(o['osd'], float(o['weight'])) for o in self.osd_map['osds']])
             self.debug(self.osd_state)
-            self.debug(self.weights)
+            weights = dict([(o['osd'], float(o['weight'])) for o in self.osd_map['osds']])
+            self.debug(weights)
         except Exception as e:
             self.debug(e)
             return False
+
+        # update cached weights
+        for osd,w in weights.items():
+            if osd not in self.weights:
+                self.weights[osd] = (w, True)
+            else:
+                self.weights[osd][0] = w
+
+        # cleanup weights of removed osds
+        to_remove = []
+        for osd in self.weights:
+            if osd not in weights:
+                to_remove.append(osd)
+        for osd in to_remove:
+            del self.weights[osd]
 
         # filter only up and in osds
         # {class -> [{osd_id -> avg_apply_lat}, {osd_id -> avg_commit_lat}]}
@@ -305,9 +354,10 @@ class Module(MgrModule):
                 "ssd" : self.max_compliant_latency_ssd,
                 "hdd" : self.max_compliant_latency_hdd,
             }.get(c, self.max_compliant_latency)
-            self.process_lats(v, min_threshold)
+            self.process_osd_lats(v, min_threshold)
         return True
 
+    #TODO: try regulator (PID, LQ, ..?), 1-st way: in-latency, out-weight + filter high weights, 2-nd way: in-weight, out-weight
     def apply_new_weights(self):
         self.pg_summary = self.get("pg_summary")
 
@@ -318,25 +368,37 @@ class Module(MgrModule):
         self.reweight_allowed = len(self.pg_summary['all']) == 1 and 'active+clean' in self.pg_summary['all']
         if self.reweight_allowed:
             self.debug(self.new_weights, "target weights")
+
+            # decide do we have rights to reweight this osd
+            # start and stop reweight only if weight=1.0
+            max_throttled_osds = int(len(self.weights)*self.max_throttled_osds)
+            throttled_osds = 0
+
+            for osd,w in self.weights.items():
+                if w[0] == 1.0:
+                    self.weights[osd][1] = True
+                elif not w[1]:
+                    throttled_osds += 1
+
+            for osd,w in sorted(self.new_weights.items(), key=operator.itemgetter(1)):
+                if throttled_osds < max_throttled_osds and self.weights[osd] and w < 1.0:
+                    self.weights[osd] = False
+                    throttled_osds += 1
+
+            # do actual reweight
             for osd,w in self.new_weights.items():
-                k = 1.0 - self.reweight_step
-                if (w > self.weights[osd] + self.reweight_step):
-                    w = self.weights[osd] / k
-                    if w > 1.0:
-                        w = 1.0
-                elif w < (self.weights[osd] - self.reweight_step):
-                    w = self.weights[osd] * k
-                if w != self.weights[osd]:
-                    self.debug("reweight osd=%d weight=%f" % (osd, w))
-                    self.do_reweight_sync(osd, w)
-                    self.weights[osd] = w
-            # cleanup weights of removed osds
-            to_remove = []
-            for osd in self.weights:
-                if osd not in self.new_weights:
-                    to_remove.append(osd)
-            for osd in to_remove:
-                del self.weights[osd]
+                if not self.weights[osd][1]:
+                    k = 1.0 - self.reweight_step
+                    if (w > self.weights[osd][0] + self.reweight_step):
+                        w = self.weights[osd][0] / k
+                        if w > 1.0:
+                            w = 1.0
+                    elif w < (self.weights[osd][0] - self.reweight_step):
+                        w = self.weights[osd][0] * k
+                    if w != self.weights[osd][0]:
+                        self.debug("reweight osd=%d weight=%f" % (osd, w))
+                        self.do_reweight_sync(osd, w)
+                        self.weights[osd][0] = w
         self.debug(self.weights, "weights")
 
     def load_config(self):
@@ -351,6 +413,9 @@ class Module(MgrModule):
         self.window_width = self.get_localized_config('window', DEFAULT_WINDOW)
         self.enable_debug = self.get_localized_config('enable_debug', DEFAULT_ENABLE_DEBUG)
         self.dry_run = self.get_localized_config('dry_run', DEFAULT_DRY_RUN)
+        self.max_throttled_osds = self.get_localized_config('max_throttled_osds', DEFAULT_MAX_THROTTLED_OSDS)
+        self.dump_latency = self.get_localized_config('dump_lats', DEFAULT_DUMP_LATENCY)
+        self.dump_latency_filename = self.get_localized_config('dump_latency_filename', DEFAULT_DUMP_LATENCY_FILENAME)
 
     def process(self):
         self.log.info("start process osds")
@@ -364,6 +429,11 @@ class Module(MgrModule):
             self.tick = datetime.datetime.now()
             self.debug_start()
             self.load_config()
+            #TODO: collect cluster state
+            #TODO: if latency goes down (to 0 for example) weight will be restored - twice period holding weight down before rising every such period
+            #TODO: select osds need to reweight: k_nearest, log_distance, k_nearest+stddev, median_nearest+stddev, log_distance+stddev, 1d_gmm_mle
+            #TODO: calc theoretical weights
+            #TODO: do reweight with constraints
             try:
                 if self.collect_stats():
                     if self.recalculate_weights() and len(self.new_weights) > 0 and not self.dry_run:
