@@ -32,23 +32,25 @@ import datetime
 import math
 import operator
 
+#TODO: try tune primary-affinity
+
 DEFAULT_ADDR = '::'
 DEFAULT_PORT = 9284
 
 DEFAULT_ENABLE_DEBUG = True
 DEFAULT_DRY_RUN = False
-DEFAULT_DUMP_LATENCY = True
+DEFAULT_DUMP_LATENCY = False
 DEFAULT_DUMP_LATENCY_FILENAME = "/tmp/ceph_osd_latencies.json"
 
 DEFAULT_PERIOD = 5 # process stats every 5 seconds
-DEFAULT_WINDOW = 10 # width of window in periods
+DEFAULT_WINDOW = 5 # width of window in periods
 # if stats not contain osd then collected stats will be deleted
 # so there is no need to control timestamps of stats values
 
 # maximum absolute latency value when osd will not be reweighted
-DEFAULT_MAX_COMPLIANT_LATENCY = 200
-DEFAULT_MAX_COMPLIANT_LATENCY_SSD = 50
-DEFAULT_MAX_COMPLIANT_LATENCY_HDD = 500
+DEFAULT_MAX_COMPLIANT_LATENCY = 100
+DEFAULT_MAX_COMPLIANT_LATENCY_SSD = 15
+DEFAULT_MAX_COMPLIANT_LATENCY_HDD = 100
 
 # latency threshold = mean*latency_mean_threshold + stddev*latency_std_threshold
 DEFAULT_LATENCY_MEAN_THRESHOLD = 2.0
@@ -248,12 +250,14 @@ class Module(MgrModule):
                 dumpfile.write(json.dumps({"apply":self.osd_apply_lats, "commit":self.osd_commit_lats}))
                 dumpfile.write("\n")
 
+        return True
+
     def aggregate_lats(self):
         self.osd_class = {}
         try:
             self.osd_class = dict([(o['id'], o['class']) for o in self.osd_map_crush['devices']
                                    if 'class' in o and 'id' in o])
-            self.debug(self.osd_class)
+            self.debug(self.osd_class, 'device class')
         except Exception as e:
             self.debug(e)
             return False
@@ -323,7 +327,7 @@ class Module(MgrModule):
         # update cached weights
         for osd,w in weights.items():
             if osd not in self.weights:
-                self.weights[osd] = (w, True)
+                self.weights[osd] = [w, True]
             else:
                 self.weights[osd][0] = w
 
@@ -382,7 +386,7 @@ class Module(MgrModule):
 
             for osd,w in sorted(self.new_weights.items(), key=operator.itemgetter(1)):
                 if throttled_osds < max_throttled_osds and self.weights[osd] and w < 1.0:
-                    self.weights[osd] = False
+                    self.weights[osd][1] = False
                     throttled_osds += 1
 
             # do actual reweight
