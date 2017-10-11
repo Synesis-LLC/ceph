@@ -607,6 +607,7 @@ EOF
 start_osd() {
     for osd in `seq 0 $((CEPH_NUM_OSD-1))`
     do
+      
 	    if [ "$new" -eq 1 ]; then
 		    wconf <<EOF
 [osd.$osd]
@@ -634,7 +635,16 @@ EOF
             ceph_adm -i "$key_fn" auth add osd.$osd osd "allow *" mon "allow profile osd" mgr "allow profile osd"
         fi
         echo start osd.$osd
-        run 'osd' $SUDO $CEPH_BIN/ceph-osd -i $osd $ARGS $COSD_ARGS
+
+        osd_cgroup_name="ceph-osd.$osd"
+        osd_cgroup="blkio:$osd_cgroup_name"
+        if [ "$(lscgroup | grep $osd_cgroup_name | wc -l)" -ne 0 ]; then
+            sudo cgdelete $osd_cgroup
+        fi
+        sudo cgcreate -a $USER -t $USER -g $osd_cgroup
+        #echo "$osd_read_dev_num     0" | sudo tee /sys/fs/cgroup/blkio/$osd_cgroup_name/blkio.throttle.write_iops_device
+        
+        run 'osd' $SUDO cgexec -g $osd_cgroup $CEPH_BIN/ceph-osd -i $osd $ARGS $COSD_ARGS
     done
 }
 
