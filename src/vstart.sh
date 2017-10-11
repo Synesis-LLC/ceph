@@ -109,6 +109,7 @@ memstore=0
 bluestore=0
 rgw_frontend="civetweb"
 rgw_compression=""
+osd_use_cgroup=0
 lockdep=${LOCKDEP:-1}
 
 filestore_path=
@@ -156,6 +157,7 @@ usage=$usage"\t--cache <pool>: enable cache tiering on pool\n"
 usage=$usage"\t--short: short object names only; necessary for ext4 dev\n"
 usage=$usage"\t--nolockdep disable lockdep\n"
 usage=$usage"\t--multimds <count> allow multimds with maximum active count\n"
+usage=$usage"\t--osd_cgroup: run each osd under separate cgroup with io limits\n"
 
 usage_exit() {
 	printf "$usage"
@@ -316,6 +318,9 @@ case $1 in
         CEPH_MAX_MDS="$2"
         shift
         ;;
+    --osd_cgroup )
+      osd_use_cgroup=1
+      ;;
     * )
 	    usage_exit
 esac
@@ -609,6 +614,7 @@ EOF
 start_osd() {
     for osd in `seq 0 $((CEPH_NUM_OSD-1))`
     do
+      
 	    if [ "$new" -eq 1 ]; then
 		    wconf <<EOF
 [osd.$osd]
@@ -641,7 +647,22 @@ EOF
             ceph_adm -i "$key_fn" auth add osd.$osd osd "allow *" mon "allow profile osd" mgr "allow profile osd"
         fi
         echo start osd.$osd
-        run 'osd' $SUDO $CEPH_BIN/ceph-osd -i $osd $ARGS $COSD_ARGS
+
+        if [ "$osd_use_cgroup" -eq 1 ]; then
+          osd_cgroup_name="ceph-osd.$osd"
+          osd_cgroup="blkio:$osd_cgroup_name"
+          if [ "$(lscgroup | grep $osd_cgroup_name | wc -l)" -ne 0 ]; then
+              sudo cgdelete $osd_cgroup
+          fi
+          sudo cgcreate -a $USER -t $USER -g $osd_cgroup
+          #echo "$osd_read_dev_num     0" | sudo tee /sys/fs/cgroup/blkio/$osd_cgroup_name/blkio.throttle.write_iops_device
+          
+          run 'osd' $SUDO cgexec -g $osd_cgroup $CEPH_BIN/ceph-osd -i $osd $ARGS $COSD_ARGS
+          
+          find /sys/fs/cgroup/blkio/$osd_cgroup_name
+        else
+          run 'osd' $SUDO $CEPH_BIN/ceph-osd -i $osd $ARGS $COSD_ARGS
+        fi
     done
 }
 
