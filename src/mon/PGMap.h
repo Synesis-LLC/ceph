@@ -369,7 +369,7 @@ public:
   PGMap()
     : version(0),
       last_osdmap_epoch(0), last_pg_scan(0),
-      full_ratio(0), nearfull_ratio(0)
+      full_ratio(0), nearfull_ratio(0), stamp(time(0), 0)
   {}
 
   void set_full_ratios(float full, float nearfull) {
