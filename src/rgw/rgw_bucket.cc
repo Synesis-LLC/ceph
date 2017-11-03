@@ -590,7 +590,7 @@ int rgw_remove_bucket(RGWRados *store, rgw_bucket& bucket, bool delete_children)
 
 int rgw_remove_object_chunks(RGWRados *store, RGWBucketInfo& info,
                              RGWObjManifest& manifest,
-                             int concurrent_max, bool wait_for_completion,
+                             size_t concurrent_max, bool wait_for_completion,
                              std::list<librados::AioCompletion*> &handles)
 {
   int ret;
@@ -637,7 +637,7 @@ int rgw_remove_object_chunks(RGWRados *store, RGWBucketInfo& info,
 int rgw_remove_object_bypass_gc(RGWRados *store,
                                 rgw_bucket& bucket, RGWBucketInfo& info,
                                 RGWObjectCtx& obj_ctx, cls_rgw_obj_key& key,
-                                int concurrent_max, bool keep_index_consistent,
+                                size_t concurrent_max, bool keep_index_consistent,
                                 bool wait_for_completion,
                                 std::list<librados::AioCompletion*> &handles)
 {
@@ -694,7 +694,7 @@ int rgw_remove_object_bypass_gc(RGWRados *store,
 }
 
 int rgw_remove_bucket_bypass_gc(RGWRados *store, rgw_bucket& bucket,
-                                int concurrent_max, bool keep_index_consistent)
+                                size_t concurrent_max, bool keep_index_consistent)
 {
   int ret;
   map<RGWObjCategory, RGWStorageStats> stats;
