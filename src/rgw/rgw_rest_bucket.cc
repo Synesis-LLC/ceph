@@ -194,16 +194,21 @@ void RGWOp_Bucket_Remove::execute()
 {
   std::string bucket;
   bool delete_children;
+  bool bypass_gc;
+  bool keep_index_consistent;
 
   RGWBucketAdminOpState op_state;
 
   RESTArgs::get_string(s, "bucket", bucket, &bucket);
   RESTArgs::get_bool(s, "purge-objects", false, &delete_children);
+  RESTArgs::get_bool(s, "bypass-gc", false, &bypass_gc);
+  RESTArgs::get_bool(s, "keep-index-consistent", true, &keep_index_consistent);
 
   op_state.set_bucket_name(bucket);
   op_state.set_delete_children(delete_children);
+  op_state.set_max_aio(store->ctx()->_conf->rgw_remove_object_max_concurrent_ios);
 
-  http_ret = RGWBucketAdminOp::remove_bucket(store, op_state);
+  http_ret = RGWBucketAdminOp::remove_bucket(store, op_state, bypass_gc, keep_index_consistent);
 }
 
 class RGWOp_Set_Bucket_Quota : public RGWRESTOp {
