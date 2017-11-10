@@ -2151,7 +2151,7 @@ int PGMap::dump_stuck_pg_stats(
   return 0;
 }
 
-void PGMap::dump_osd_perf_stats(Formatter *f) const
+void PGMap::dump_osd_perf_stats(Formatter *f, const OSDMap& osd_map) const
 {
   f->open_array_section("osd_perf_infos");
   for (auto i = osd_stat.begin();
@@ -2164,22 +2164,29 @@ void PGMap::dump_osd_perf_stats(Formatter *f) const
       i->second.os_perf_stat.dump(f);
       f->close_section();
     }
+    const char* c = osd_map.crush->get_item_class(i->first);
+    if (c) {
+      f->dump_string("device_class", c);
+    }
     f->close_section();
   }
   f->close_section();
 }
-void PGMap::print_osd_perf_stats(std::ostream *ss) const
+void PGMap::print_osd_perf_stats(std::ostream *ss, const OSDMap& osd_map) const
 {
   TextTable tab;
   tab.define_column("osd", TextTable::LEFT, TextTable::RIGHT);
   tab.define_column("commit_latency(ms)", TextTable::LEFT, TextTable::RIGHT);
   tab.define_column("apply_latency(ms)", TextTable::LEFT, TextTable::RIGHT);
+  tab.define_column("device_class", TextTable::LEFT, TextTable::RIGHT);
   for (auto i = osd_stat.begin();
        i != osd_stat.end();
        ++i) {
+    const char* c = osd_map.crush->get_item_class(i->first);
     tab << i->first;
     tab << i->second.os_perf_stat.os_commit_latency;
     tab << i->second.os_perf_stat.os_apply_latency;
+    tab << c;
     tab << TextTable::endrow;
   }
   (*ss) << tab;
@@ -4069,11 +4076,11 @@ int process_pg_map_command(
   if (prefix == "osd perf") {
     if (f) {
       f->open_object_section("osdstats");
-      pg_map.dump_osd_perf_stats(f);
+      pg_map.dump_osd_perf_stats(f, osdmap);
       f->close_section();
       f->flush(ds);
     } else {
-      pg_map.print_osd_perf_stats(&ds);
+      pg_map.print_osd_perf_stats(&ds, osdmap);
     }
     odata->append(ds);
     return 0;
