@@ -478,8 +478,8 @@ public:
   void dump_osd_sum_stats(ostream& ss) const;
   void dump_filtered_pg_stats(ostream& ss, set<pg_t>& pgs) const;
 
-  void dump_osd_perf_stats(Formatter *f) const;
-  void print_osd_perf_stats(std::ostream *ss) const;
+  void dump_osd_perf_stats(Formatter *f, const OSDMap& osdmap) const;
+  void print_osd_perf_stats(std::ostream *ss, const OSDMap& osdmap) const;
 
   void dump_osd_blocked_by_stats(Formatter *f) const;
   void print_osd_blocked_by_stats(std::ostream *ss) const;
