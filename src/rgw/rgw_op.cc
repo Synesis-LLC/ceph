@@ -2886,6 +2886,19 @@ void RGWDeleteBucket::execute()
     op_ret = -ERR_NO_SUCH_BUCKET;
     return;
   }
+
+  if (store->ctx()->_conf->rgw_remove_bucket_always_delete_children) {
+    if (store->ctx()->_conf->rgw_remove_object_always_bypass_gc) {
+      bool keep_index_consistent = true;
+      op_ret = rgw_remove_bucket_bypass_gc(store, s->bucket,
+                                           store->ctx()->_conf->rgw_remove_object_max_concurrent_ios,
+                                           keep_index_consistent);
+    } else {
+      op_ret = rgw_remove_bucket(store, s->bucket, true);
+    }
+    return;
+  }
+
   RGWObjVersionTracker ot;
   ot.read_version = s->bucket_info.ep_objv;
 
@@ -2968,11 +2981,6 @@ void RGWDeleteBucket::execute()
 		       << dendl;
     }
   }
-
-  if (op_ret < 0) {
-    return;
-  }
-
 
 }
 
