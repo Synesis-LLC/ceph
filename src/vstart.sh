@@ -437,7 +437,6 @@ prepare_conf() {
         ; needed for s3tests
         rgw crypt s3 kms encryption keys = testkey-1=YmluCmJvb3N0CmJvb3N0LWJ1aWxkCmNlcGguY29uZgo= testkey-2=aWIKTWFrZWZpbGUKbWFuCm91dApzcmMKVGVzdGluZwo=
         rgw crypt require ssl = false
-        rgw lc debug interval = 10
         filestore fd cache size = 32
         run dir = $CEPH_OUT_DIR
         enable experimental unrecoverable data corrupting features = *
@@ -469,8 +468,13 @@ EOF
         keyring = $keyring_fn
         log file = $CEPH_OUT_DIR/\$name.\$pid.log
         admin socket = $CEPH_ASOK_DIR/\$name.\$pid.asok
-
+        rgw gc obj min wait = 10
+         
 [client.rgw]
+        rgw lc debug interval = 10
+        rgw gc processor period = 10
+        rgw override bucket index max shards = 16
+        rgw dynamic resharding = false
 
 [mds]
 $DAEMONOPTS
