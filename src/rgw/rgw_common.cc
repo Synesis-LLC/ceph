@@ -1909,6 +1909,10 @@ int drain_handles(std::list<librados::AioCompletion *>& pending)
     librados::AioCompletion *handle = pending.front();
     pending.pop_front();
     int r = aio_wait(handle);
+    if (r == -ENOENT) {
+      // drain_handles always called for parallell deletion, where ENOENT==success
+      r = 0;
+    }
     if (r < 0) {
       ret = r;
     }
