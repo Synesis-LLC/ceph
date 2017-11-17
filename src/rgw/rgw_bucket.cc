@@ -589,7 +589,7 @@ int rgw_remove_bucket(RGWRados *store, rgw_bucket& bucket, bool delete_children)
 }
 
 int rgw_remove_object_chunks(RGWRados *store, RGWBucketInfo& info,
-                             RGWObjManifest& manifest,
+                             RGWObjManifest& manifest, const std::string& tag,
                              size_t concurrent_max, bool wait_for_completion,
                              std::list<librados::AioCompletion*> &handles)
 {
@@ -616,7 +616,7 @@ int rgw_remove_object_chunks(RGWRados *store, RGWBucketInfo& info,
       continue;
     }
 
-    ret = store->delete_raw_obj_aio(last_obj, handles);
+    ret = store->raw_obj_refcount_put_aio(last_obj, tag, handles);
     if (ret < 0) {
       lderr(store->ctx()) << "ERROR: delete raw obj aio failed with " << ret << dendl;
       return ret;
@@ -660,7 +660,9 @@ int rgw_remove_object_bypass_gc(RGWRados *store,
   uint64_t obj_size = astate->size;
 
   if (astate->has_manifest) {
-    ret = rgw_remove_object_chunks(store, info, astate->manifest, concurrent_max, false, handles);
+    string tag = (astate->tail_tag.length() > 0 ? astate->tail_tag.to_str() : astate->obj_tag.to_str());
+
+    ret = rgw_remove_object_chunks(store, info, astate->manifest, tag, concurrent_max, false, handles);
     if (ret < 0) {
       lderr(store->ctx()) << "ERROR: delete obj chunks failed with " << ret << dendl;
       return ret;
