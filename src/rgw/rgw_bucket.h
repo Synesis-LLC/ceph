@@ -195,7 +195,7 @@ extern int rgw_remove_object_bypass_gc(RGWRados *store,
                                        bool wait_for_completion,
                                        std::list<librados::AioCompletion*> &handles);
 extern int rgw_remove_object_chunks(RGWRados *store, RGWBucketInfo& info,
-                                    RGWObjManifest& manifest,
+                                    RGWObjManifest& manifest, const std::string& tag,
                                     size_t concurrent_max, bool wait_for_completion,
                                     std::list<librados::AioCompletion*> &handles);
 
