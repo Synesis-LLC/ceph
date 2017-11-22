@@ -127,6 +127,8 @@ class LCFilter
     ::decode(prefix, bl);
     DECODE_FINISH(bl);
   }
+
+  void dump(Formatter *f) const;
 };
 WRITE_CLASS_ENCODER(LCFilter);
 
@@ -245,6 +247,7 @@ public:
      DECODE_FINISH(bl);
    }
 
+   void dump(Formatter *f) const;
 };
 WRITE_CLASS_ENCODER(LCRule)
 
@@ -258,7 +261,8 @@ struct lc_op
   boost::optional<ceph::real_time> expiration_date;
 
   lc_op() : status(false), dm_expiration(false), expiration(0), noncur_expiration(0), mp_expiration(0) {}
-  
+
+  void dump(Formatter *f) const;
 };
 
 class RGWLifecycleConfiguration
