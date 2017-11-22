@@ -19,6 +19,7 @@
 #include "common/lru_map.h"
 #include "common/ceph_time.h"
 #include "rgw_formats.h"
+#include "rgw_lc.h"
 
 // define as static when RGWBucket implementation compete
 extern void rgw_get_buckets_obj(const rgw_user& user_id, string& buckets_obj_id);
@@ -319,6 +320,8 @@ public:
   int policy_bl_to_stream(bufferlist& bl, ostream& o);
   int get_policy(RGWBucketAdminOpState& op_state, RGWAccessControlPolicy& policy);
 
+  int get_lc(RGWBucketAdminOpState& op_state, RGWLifecycleConfiguration& lc_conf);
+
   void clear_failure() { failure = false; }
 };
 
@@ -331,6 +334,9 @@ public:
                   RGWAccessControlPolicy& policy);
   static int dump_s3_policy(RGWRados *store, RGWBucketAdminOpState& op_state,
                   ostream& os);
+
+  static int get_lc(RGWRados *store, RGWBucketAdminOpState& op_state,
+                  RGWFormatterFlusher& flusher);
 
   static int unlink(RGWRados *store, RGWBucketAdminOpState& op_state);
   static int link(RGWRados *store, RGWBucketAdminOpState& op_state, string *err_msg = NULL);

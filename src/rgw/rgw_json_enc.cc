@@ -215,6 +215,64 @@ void RGWAccessControlPolicy::dump(Formatter *f) const
   encode_json("owner", owner, f);
 }
 
+void RGWLifecycleConfiguration::dump(Formatter *f) const
+{
+  encode_json("prefix_map", prefix_map, f);
+  encode_json("rule_map", rule_map, f);
+}
+
+void lc_op::dump(Formatter *f) const
+{
+  f->open_object_section("lc_op");
+  f->dump_bool("status", status);
+  f->dump_bool("dm_expiration", dm_expiration);
+  f->dump_int("expiration", expiration);
+  f->dump_int("noncur_expiration", noncur_expiration);
+  f->dump_int("mp_expiration", mp_expiration);
+  if (expiration_date) {
+    /*
+    ceph::real_time rt = expiration_date.get();
+    std::chrono::seconds s = std::chrono::duration_cast<std::chrono::seconds>(rt.time_since_epoch());
+    std::time_t t = s.count();
+    f->dump_string("expiration_date", std::ctime(&t));
+    */
+    utime_t ut(expiration_date.get());
+    encode_json("last_update", ut, f);
+  }
+  f->close_section();
+}
+
+void LCRule::dump(Formatter *f) const
+{
+  f->open_object_section("LCRule");
+  f->dump_string("id", id);
+  f->dump_string("prefix", prefix);
+  f->dump_string("status", status);
+
+  f->dump_object("expiration", expiration);
+  f->dump_object("noncur_expiration", noncur_expiration);
+  f->dump_object("mp_expiration", mp_expiration);
+  f->dump_object("filter", filter);
+
+  f->dump_bool("dm_expiration", dm_expiration);
+  f->close_section();
+}
+
+void LCExpiration::dump(Formatter *f) const
+{
+  f->open_object_section("LCFilter");
+  f->dump_string("days", days);
+  f->dump_string("date", date);
+  f->close_section();
+}
+
+void LCFilter::dump(Formatter *f) const
+{
+  f->open_object_section("LCFilter");
+  f->dump_string("prefix", prefix);
+  f->close_section();
+}
+
 void ObjectMetaInfo::dump(Formatter *f) const
 {
   encode_json("size", size, f);

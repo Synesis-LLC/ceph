@@ -86,6 +86,7 @@ void usage()
   cout << "  bucket reshard             reshard bucket\n";
   cout << "  bucket sync disable        disable bucket sync\n";
   cout << "  bucket sync enable         enable bucket sync\n";
+  cout << "  bucket lc-conf             enable bucket sync\n";
   cout << "  bi get                     retrieve bucket index object entries\n";
   cout << "  bi put                     store bucket index object entries\n";
   cout << "  bi list                    list raw bucket index entries\n";
@@ -367,6 +368,7 @@ enum {
   OPT_BUCKET_RM,
   OPT_BUCKET_REWRITE,
   OPT_BUCKET_RESHARD,
+  OPT_BUCKET_LC_CONF,
   OPT_POLICY,
   OPT_POOL_ADD,
   OPT_POOL_RM,
@@ -611,6 +613,8 @@ static int get_cmd(const char *cmd, const char *prev_cmd, const char *prev_prev_
       return OPT_BUCKET_RESHARD;
     if (strcmp(cmd, "check") == 0)
       return OPT_BUCKET_CHECK;
+    if (strcmp(cmd, "lc-conf") == 0)
+      return OPT_BUCKET_LC_CONF;
     if (strcmp(cmd, "sync") == 0) {
       *need_more = true;
       return 0;
@@ -5117,6 +5121,14 @@ int main(int argc, const char **argv)
         cerr << "ERROR: failed to get policy: " << cpp_strerror(-ret) << std::endl;
         return -ret;
       }
+    }
+  }
+
+  if (opt_cmd == OPT_BUCKET_LC_CONF) {
+    int ret = RGWBucketAdminOp::get_lc(store, bucket_op, f);
+    if (ret < 0) {
+      cerr << "ERROR: failed to get lc: " << cpp_strerror(-ret) << std::endl;
+      return -ret;
     }
   }
 

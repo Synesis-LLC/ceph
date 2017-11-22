@@ -1255,13 +1255,41 @@ static int policy_decode(RGWRados *store, bufferlist& bl, RGWAccessControlPolicy
   return 0;
 }
 
+int RGWBucket::get_lc(RGWBucketAdminOpState& op_state, RGWLifecycleConfiguration& lc_conf)
+{
+  lc_conf.set_ctx(store->ctx());
+  rgw_bucket bucket = op_state.get_bucket();
+
+  RGWBucketInfo bucket_info;
+  map<string, bufferlist> bucket_attrs;
+  RGWObjectCtx obj_ctx(store);
+  int ret = store->get_bucket_info(obj_ctx, bucket.tenant, bucket.name, bucket_info, NULL, &bucket_attrs);
+  if (ret < 0) {
+    return ret;
+  }
+
+  map<string, bufferlist>::iterator aiter = bucket_attrs.find(RGW_ATTR_LC);
+  if (aiter == bucket_attrs.end()) {
+    ldout(store->ctx(), 0) << "LC xattr not set" << dendl;
+    return -ENOENT;
+  }
+
+  bufferlist::iterator iter(&aiter->second);
+  try {
+    lc_conf.decode(iter);
+  } catch (const buffer::error& e) {
+    ldout(store->ctx(), 0) << "Could not decode LC xattr" << dendl;
+    return -ENOENT;
+  }
+  return 0;
+}
+
 int RGWBucket::get_policy(RGWBucketAdminOpState& op_state, RGWAccessControlPolicy& policy)
 {
   std::string object_name = op_state.get_object_name();
   rgw_bucket bucket = op_state.get_bucket();
   RGWObjectCtx obj_ctx(store);
 
-  RGWBucketInfo bucket_info;
   map<string, bufferlist> attrs;
   int ret = store->get_bucket_info(obj_ctx, bucket.tenant, bucket.name, bucket_info, NULL, &attrs);
   if (ret < 0) {
@@ -1289,7 +1317,6 @@ int RGWBucket::get_policy(RGWBucketAdminOpState& op_state, RGWAccessControlPolic
 
   return policy_decode(store, aiter->second, policy);
 }
-
 
 int RGWBucketAdminOp::get_policy(RGWRados *store, RGWBucketAdminOpState& op_state,
                   RGWAccessControlPolicy& policy)
@@ -1342,6 +1369,33 @@ int RGWBucketAdminOp::dump_s3_policy(RGWRados *store, RGWBucketAdminOpState& op_
     return ret;
 
   policy.to_xml(os);
+
+  return 0;
+}
+
+int RGWBucketAdminOp::get_lc(RGWRados *store, RGWBucketAdminOpState& op_state,
+                  RGWFormatterFlusher& flusher)
+{
+  RGWLifecycleConfiguration lc_conf;
+  RGWBucket bucket;
+
+  int ret = bucket.init(store, op_state);
+  if (ret < 0)
+    return ret;
+
+  ret = bucket.get_lc(op_state, lc_conf);
+  if (ret < 0)
+    return ret;
+
+  Formatter *formatter = flusher.get_formatter();
+
+  flusher.start(0);
+
+  formatter->open_object_section("lifecycle");
+  lc_conf.dump(formatter);
+  formatter->close_section();
+
+  flusher.flush();
 
   return 0;
 }
