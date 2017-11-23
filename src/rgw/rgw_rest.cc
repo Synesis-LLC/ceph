@@ -927,6 +927,32 @@ int RESTArgs::get_uint64(struct req_state *s, const string& name,
   return 0;
 }
 
+int RESTArgs::get_bool(struct req_state *s, const string& name, boost::optional<bool>& value)
+{
+  bool exist = false;
+  bool v = false;
+  int res = get_bool(s, name, v, &v, &exist);
+  if (res != 0) {
+    return res;
+  }
+  if (exist) {
+    value = v;
+  }
+}
+
+int RESTArgs::get_int64(struct req_state *s, const string& name, boost::optional<int64_t>& value)
+{
+  bool exist = false;
+  int64_t v = 0;
+  int res = get_int64(s, name, v, &v, &exist);
+  if (res != 0) {
+    return res;
+  }
+  if (exist) {
+    value = v;
+  }
+}
+
 int RESTArgs::get_int64(struct req_state *s, const string& name,
 			int64_t def_val, int64_t *val, bool *existed)
 {

@@ -228,6 +228,13 @@ struct RGWBucketAdminOpState {
 
   RGWQuotaInfo quota;
 
+  struct RGWBucketQuotaChanges {
+    boost::optional<int64_t> max_objects;
+    boost::optional<int64_t> max_size;
+    boost::optional<bool> enabled;
+    boost::optional<bool> check_on_raw;
+  } quota_changes;
+
   void set_fetch_stats(bool value) { stat_buckets = value; }
   void set_check_objects(bool value) { check_objects = value; }
   void set_fix_index(bool value) { fix_index = value; }
@@ -327,6 +334,9 @@ public:
 
   int get_lc(RGWBucketAdminOpState& op_state, RGWLifecycleConfiguration& lc_conf);
 
+  int set_quota_info(RGWBucketAdminOpState& op_state, const RGWQuotaInfo& quota_info, std::string *err_msg = nullptr);
+  int get_quota_info(RGWBucketAdminOpState& op_state, RGWQuotaInfo& quota_info, std::string *err_msg = nullptr);
+
   void clear_failure() { failure = false; }
 };
 
@@ -356,7 +366,11 @@ public:
 			 const std::list<std::string>& user_ids,
 			 RGWFormatterFlusher& flusher,
 			 bool warnings_only = false);
+
   static int set_quota(RGWRados *store, RGWBucketAdminOpState& op_state);
+
+  static int set_quota(RGWRados *store, RGWBucketAdminOpState& op_state, RGWFormatterFlusher& flusher);
+  static int get_quota(RGWRados *store, RGWBucketAdminOpState& op_state, RGWFormatterFlusher& flusher);
 };
 
 

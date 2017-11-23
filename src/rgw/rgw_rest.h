@@ -126,6 +126,9 @@ public:
 		       bool *existed = NULL);
   static int get_bool(struct req_state *s, const string& name, bool def_val,
 		      bool *val, bool *existed = NULL);
+
+  static int get_bool(struct req_state *s, const string& name, boost::optional<bool>& value);
+  static int get_int64(struct req_state *s, const string& name, boost::optional<int64_t>& value);
 };
 
 class RGWRESTFlusher : public RGWFormatterFlusher {

@@ -227,16 +227,32 @@ public:
 
 #define QUOTA_INPUT_MAX_LEN 1024
 
-void RGWOp_Set_Bucket_Quota::execute()
+class RGWOp_Bucket_Quota_Set: public RGWRESTOp {
+
+public:
+  RGWOp_Bucket_Quota_Set() {}
+
+  int check_caps(RGWUserCaps& caps) override {
+    return caps.check_cap("buckets", RGW_CAP_WRITE);
+  }
+
+  void execute() override;
+
+  const string name() override { return "set_bucket_quota_info"; }
+};
+
+void RGWOp_Bucket_Quota_Set::execute()
 {
+  RGWBucketAdminOpState op_state;
+
   bool uid_arg_existed = false;
   std::string uid_str;
   RESTArgs::get_string(s, "uid", uid_str, &uid_str, &uid_arg_existed);
-  if (! uid_arg_existed) {
-    http_ret = -EINVAL;
-    return;
+  if (uid_arg_existed && !uid_str.empty()) {
+    rgw_user uid(uid_str);
+    op_state.set_user_id(uid);
   }
-  rgw_user uid(uid_str);
+
   bool bucket_arg_existed = false;
   std::string bucket;
   RESTArgs::get_string(s, "bucket", bucket, &bucket, &bucket_arg_existed);
@@ -244,6 +260,7 @@ void RGWOp_Set_Bucket_Quota::execute()
     http_ret = -EINVAL;
     return;
   }
+  op_state.set_bucket_name(bucket);
 
   bool use_http_params;
 
@@ -263,30 +280,58 @@ void RGWOp_Set_Bucket_Quota::execute()
       /* was probably chunked input, but no content provided, configure via http params */
       use_http_params = true;
     }
-  }
-  if (use_http_params) {
-    RGWBucketInfo bucket_info;
-    map<string, bufferlist> attrs;
-    RGWObjectCtx obj_ctx(store);
-    http_ret = store->get_bucket_info(obj_ctx, uid.tenant, bucket, bucket_info, NULL, &attrs);
-    if (http_ret < 0) {
-      return;
+
+    op_state.set_quota(quota);
+
+    http_ret = RGWBucketAdminOp::set_quota(store, op_state);
+  } else {
+    int64_t num_value = 0;
+    bool exists = false;
+    RESTArgs::get_int64(s, "max_size_kb", num_value, &num_value, &exists);
+    if (exists) {
+      op_state.quota_changes.max_size = num_value * 1024;
     }
-    RGWQuotaInfo *old_quota = &bucket_info.quota;
-    int64_t old_max_size_kb = rgw_rounded_kb(old_quota->max_size);
-    int64_t max_size_kb;
-    RESTArgs::get_int64(s, "max-objects", old_quota->max_objects, &quota.max_objects);
-    RESTArgs::get_int64(s, "max-size-kb", old_max_size_kb, &max_size_kb);
-    quota.max_size = max_size_kb * 1024;
-    RESTArgs::get_bool(s, "enabled", old_quota->enabled, &quota.enabled);
+    exists = false;
+    RESTArgs::get_int64(s, "max-size-kb", num_value, &num_value, &exists);
+    if (exists) {
+      op_state.quota_changes.max_size = num_value * 1024;
+    }
+    RESTArgs::get_int64(s, "max_size", op_state.quota_changes.max_size);
+    RESTArgs::get_int64(s, "max_objects", op_state.quota_changes.max_objects);
+    RESTArgs::get_int64(s, "max-size", op_state.quota_changes.max_size);
+    RESTArgs::get_int64(s, "max-objects", op_state.quota_changes.max_objects);
+    RESTArgs::get_bool(s, "enabled", op_state.quota_changes.enabled);
+    RESTArgs::get_bool(s, "check_on_raw", op_state.quota_changes.check_on_raw);
+
+    http_ret = RGWBucketAdminOp::set_quota(store, op_state, flusher);
   }
+}
+
+class RGWOp_Bucket_Quota_Get: public RGWRESTOp {
+
+public:
+  RGWOp_Bucket_Quota_Get() {}
+
+  int check_caps(RGWUserCaps& caps) override {
+    return caps.check_cap("buckets", RGW_CAP_WRITE);
+  }
+
+  void execute() override;
+
+  const string name() override { return "get_bucket_quota_info"; }
+};
+
+void RGWOp_Bucket_Quota_Get::execute()
+{
+  std::string bucket;
 
   RGWBucketAdminOpState op_state;
-  op_state.set_user_id(uid);
-  op_state.set_bucket_name(bucket);
-  op_state.set_quota(quota);
 
-  http_ret = RGWBucketAdminOp::set_quota(store, op_state);
+  RESTArgs::get_string(s, "bucket", bucket, &bucket);
+
+  op_state.set_bucket_name(bucket);
+
+  http_ret = RGWBucketAdminOp::get_quota(store, op_state, flusher);
 }
 
 class RGWOp_Object_Remove: public RGWRESTOp {
@@ -328,13 +373,17 @@ RGWOp *RGWHandler_Bucket::op_get()
   if (s->info.args.sub_resource_exists("index"))
     return new RGWOp_Check_Bucket_Index;
 
+  if (s->info.args.sub_resource_exists("quota"))
+    return new RGWOp_Bucket_Quota_Get;
+
   return new RGWOp_Bucket_Info;
 }
 
 RGWOp *RGWHandler_Bucket::op_put()
 {
   if (s->info.args.sub_resource_exists("quota"))
-    return new RGWOp_Set_Bucket_Quota;
+    return new RGWOp_Bucket_Quota_Set;
+
   return new RGWOp_Bucket_Link;
 }
 
@@ -350,4 +399,5 @@ RGWOp *RGWHandler_Bucket::op_delete()
 
   return new RGWOp_Bucket_Remove;
 }
+
 
