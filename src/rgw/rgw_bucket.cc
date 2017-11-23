@@ -1227,7 +1227,7 @@ static int policy_decode(RGWRados *store, bufferlist& bl, RGWAccessControlPolicy
   return 0;
 }
 
-int RGWBucket::get_lc(RGWBucketAdminOpState& op_state, RGWLifecycleConfiguration& lc_conf)
+int RGWBucket::get_lc_conf(RGWBucketAdminOpState& op_state, RGWLifecycleConfiguration& lc_conf)
 {
   lc_conf.set_ctx(store->ctx());
   rgw_bucket bucket = op_state.get_bucket();
@@ -1253,6 +1253,47 @@ int RGWBucket::get_lc(RGWBucketAdminOpState& op_state, RGWLifecycleConfiguration
     ldout(store->ctx(), 0) << "Could not decode LC xattr" << dendl;
     return -ENOENT;
   }
+  return 0;
+}
+
+int RGWBucket::set_quota_info(RGWBucketAdminOpState& op_state, const RGWQuotaInfo& quota_info)
+{
+  rgw_bucket bucket = op_state.get_bucket();
+  RGWBucketInfo bucket_info;
+  map<string, bufferlist> bucket_attrs;
+  RGWObjectCtx obj_ctx(store);
+
+  int ret = store->get_bucket_info(obj_ctx, bucket.tenant, bucket.name, bucket_info, NULL, &bucket_attrs);
+  if (ret < 0) {
+    ldout(store->ctx(), 0) << "ERROR: failed get bucket instance info: " << cpp_strerror(-ret) << dendl;
+    return ret;
+  }
+
+  bucket_info.quota = quota_info;
+
+  ret = store->put_bucket_instance_info(bucket_info, false, real_time(), &bucket_attrs);
+  if (ret < 0) {
+    ldout(store->ctx(), 0) << "ERROR: failed writing bucket instance info: " << cpp_strerror(-ret) << dendl;
+    return ret;
+  }
+
+  return 0;
+}
+
+int RGWBucket::get_quota_info(RGWBucketAdminOpState& op_state, RGWQuotaInfo& quota_info)
+{
+  rgw_bucket bucket = op_state.get_bucket();
+  RGWBucketInfo bucket_info;
+  map<string, bufferlist> bucket_attrs;
+  RGWObjectCtx obj_ctx(store);
+  int ret = store->get_bucket_info(obj_ctx, bucket.tenant, bucket.name, bucket_info, NULL, &bucket_attrs);
+  if (ret < 0) {
+    ldout(store->ctx(), 0) << "ERROR: failed get bucket instance info: " << cpp_strerror(-ret) << dendl;
+    return ret;
+  }
+
+  quota_info = bucket_info.quota;
+
   return 0;
 }
 
@@ -1355,7 +1396,7 @@ int RGWBucketAdminOp::get_lc(RGWRados *store, RGWBucketAdminOpState& op_state,
   if (ret < 0)
     return ret;
 
-  ret = bucket.get_lc(op_state, lc_conf);
+  ret = bucket.get_lc_conf(op_state, lc_conf);
   if (ret < 0)
     return ret;
 
@@ -1497,6 +1538,82 @@ static int bucket_stats(RGWRados *store, const std::string& tenant_name, std::st
   dump_bucket_usage(stats, formatter);
   encode_json("bucket_quota", bucket_info.quota, formatter);
   formatter->close_section();
+
+  return 0;
+}
+
+int RGWBucketAdminOp::set_quota(RGWRados *store, RGWBucketAdminOpState& op_state, RGWFormatterFlusher& flusher)
+{
+  RGWQuotaInfo quota_info;
+  RGWBucket bucket;
+
+  int ret = bucket.init(store, op_state);
+  if (ret < 0)
+    return ret;
+
+  ret = bucket.get_quota_info(op_state, quota_info);
+  if (ret < 0)
+    return ret;
+
+  bool need_set = false;
+  if (op_state.quota_changes.check_on_raw.is_initialized()) {
+    quota_info.check_on_raw = op_state.quota_changes.check_on_raw.get();
+    need_set = true;
+  }
+  if (op_state.quota_changes.enabled.is_initialized()) {
+    quota_info.enabled = op_state.quota_changes.enabled.get();
+    need_set = true;
+  }
+  if (op_state.quota_changes.max_objects.is_initialized()) {
+    quota_info.max_objects = op_state.quota_changes.max_objects.get();
+    need_set = true;
+  }
+  if (op_state.quota_changes.max_size.is_initialized()) {
+    quota_info.max_size = op_state.quota_changes.max_size.get();
+    need_set = true;
+  }
+
+  if (need_set) {
+    ret = bucket.set_quota_info(op_state, quota_info);
+    if (ret < 0)
+      return ret;
+  }
+
+  Formatter *formatter = flusher.get_formatter();
+
+  flusher.start(0);
+
+  formatter->open_object_section("bucket_quota");
+  quota_info.dump(formatter);
+  formatter->close_section();
+
+  flusher.flush();
+
+  return 0;
+}
+
+int RGWBucketAdminOp::get_quota(RGWRados *store, RGWBucketAdminOpState& op_state, RGWFormatterFlusher& flusher)
+{
+  RGWQuotaInfo quota_info;
+  RGWBucket bucket;
+
+  int ret = bucket.init(store, op_state);
+  if (ret < 0)
+    return ret;
+
+  ret = bucket.get_quota_info(op_state, quota_info);
+  if (ret < 0)
+    return ret;
+
+  Formatter *formatter = flusher.get_formatter();
+
+  flusher.start(0);
+
+  formatter->open_object_section("bucket_quota");
+  quota_info.dump(formatter);
+  formatter->close_section();
+
+  flusher.flush();
 
   return 0;
 }
