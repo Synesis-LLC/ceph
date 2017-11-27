@@ -1490,6 +1490,7 @@ OPTION(rgw_remove_object_always_bypass_gc, OPT_BOOL) // always bypass gc
 OPTION(rgw_remove_bucket_always_delete_children, OPT_BOOL) // always delete objects in bucket
 OPTION(rgw_remove_object_max_concurrent_ios, OPT_INT) // Maximum number of concurrent io operations
                                                           // per single rgw object remove request
+OPTION(rgw_trace_deletes, OPT_BOOL) // Trace rgw delete ops
 
 OPTION(rgw_data_log_window, OPT_INT) // data log entries window (in seconds)
 OPTION(rgw_data_log_changes_size, OPT_INT) // number of in-memory entries to hold for data changes log

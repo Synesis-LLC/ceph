@@ -5319,6 +5319,10 @@ std::vector<Option> get_rgw_options() {
     .set_default(false)
     .set_description("Always delete objects when delete bucket (allow delete not empty buckets)"),
 
+    Option("rgw_trace_deletes", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(false)
+    .set_description("Enable extra logging for delete operations"),
+
     Option("rgw_remove_object_max_concurrent_ios", Option::TYPE_INT, Option::LEVEL_ADVANCED)
     .set_default(32)
     .set_description("Maximum number of concurrent io operations per single rgw object remove request"),
