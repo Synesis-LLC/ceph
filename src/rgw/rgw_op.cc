@@ -2849,8 +2849,32 @@ void RGWDeleteBucket::pre_exec()
   rgw_bucket_object_pre_exec(s);
 }
 
+struct RGWDeleteBucketLogGuard
+{
+  string name;
+  bool enabled;
+  bool succeeded;
+  bool enoent;
+  CephContext* ctx;
+  RGWDeleteBucketLogGuard(const RGWRados* store, const string& bucket_name) :
+    name(bucket_name),
+    enabled(store->ctx()->_conf->rgw_trace_deletes),
+    succeeded(false),
+    ctx(store->ctx()),
+    enoent(false)
+  {}
+  virtual ~RGWDeleteBucketLogGuard()
+  {
+    if (enabled) {
+      ldout(ctx, 0) << "RGWDeleteBucket " << name << (succeeded ? " OK" : (enoent ? " ENOENT" : " FAILED")) << dendl;
+    }
+  }
+};
+
 void RGWDeleteBucket::execute()
 {
+  RGWDeleteBucketLogGuard log_guard(store, s->bucket_name);
+
   op_ret = -EINVAL;
 
   if (s->bucket_name.empty())
@@ -2859,6 +2883,7 @@ void RGWDeleteBucket::execute()
   if (!s->bucket_exists) {
     ldout(s->cct, 0) << "ERROR: bucket " << s->bucket_name << " not found" << dendl;
     op_ret = -ERR_NO_SUCH_BUCKET;
+    log_guard.enoent = true;
     return;
   }
 
@@ -2871,6 +2896,10 @@ void RGWDeleteBucket::execute()
     } else {
       op_ret = rgw_remove_bucket(store, s->bucket, true);
     }
+
+    log_guard.enoent = (op_ret == -ENOENT);
+    log_guard.succeeded = (op_ret == 0);
+
     return;
   }
 
@@ -2913,6 +2942,7 @@ void RGWDeleteBucket::execute()
         /* adjust error, we want to return with NoSuchBucket and not
 	 * NoSuchKey */
         op_ret = -ERR_NO_SUCH_BUCKET;
+        log_guard.enoent = true;
       }
       return;
     }
@@ -2945,10 +2975,12 @@ void RGWDeleteBucket::execute()
     // lost a race, either with mdlog sync or another delete bucket operation.
     // in either case, we've already called rgw_unlink_bucket()
     op_ret = 0;
+    log_guard.succeeded = true;
     return;
   }
 
   if (op_ret == 0) {
+    log_guard.succeeded = true;
     op_ret = rgw_unlink_bucket(store, s->user->user_id, s->bucket.tenant,
 			       s->bucket.name, false);
     if (op_ret < 0) {
@@ -4223,10 +4255,35 @@ void RGWDeleteObj::pre_exec()
   rgw_bucket_object_pre_exec(s);
 }
 
+struct RGWDeleteObjLogGuard
+{
+  string name;
+  bool enabled;
+  bool succeeded;
+  bool enoent;
+  CephContext* ctx;
+  RGWDeleteObjLogGuard(const RGWRados* store, const string& obj_name) :
+    name(obj_name),
+    enabled(store->ctx()->_conf->rgw_trace_deletes),
+    succeeded(false),
+    enoent(false),
+    ctx(store->ctx())
+  {}
+  virtual ~RGWDeleteObjLogGuard()
+  {
+    if (enabled) {
+      ldout(ctx, 0) << "RGWDeleteObj " << name << (succeeded ? " OK" : (enoent ? " ENOENT" : " FAILED")) << dendl;
+    }
+  }
+};
+
 void RGWDeleteObj::execute()
 {
+  RGWDeleteObjLogGuard log_guard(store, s->object.name);
+
   if (!s->bucket_exists) {
     op_ret = -ERR_NO_SUCH_BUCKET;
+    log_guard.enoent = true;
     return;
   }
 
@@ -4296,12 +4353,15 @@ void RGWDeleteObj::execute()
       if (op_ret >= 0) {
         delete_marker = del_op.result.delete_marker;
         version_id = del_op.result.version_id;
+      } else {
+        log_guard.succeeded = true;
       }
 
       /* Check whether the object has expired. Swift API documentation
        * stands that we should return 404 Not Found in such case. */
       if (need_object_expiration() && object_is_expired(attrs)) {
         op_ret = -ENOENT;
+        log_guard.enoent = true;
         return;
       }
     }
@@ -5777,6 +5837,60 @@ void RGWDeleteMultiObj::pre_exec()
   rgw_bucket_object_pre_exec(s);
 }
 
+struct RGWDeleteMultiObjLogGuard
+{
+  void set_key_list(const std::vector<rgw_obj_key>& objects)
+  {
+    if (enabled) {
+      for (const auto& obj : objects) {
+        names.emplace(obj.name);
+      }
+    }
+  }
+  void set_result(const string& name, int result)
+  {
+    if (enabled) {
+      auto fres = names.find(name);
+      if (fres != names.end()) {
+        names.erase(fres);
+      } else {
+        ldout(ctx, 0) << "RGWDeleteMultiObj: deleted object that not requested: " << name << " " << result << dendl;
+      }
+      results.emplace_back(name, result);
+    }
+  }
+  string bucket_name;
+  std::set<string> names;
+  std::list<std::pair<string, int>> results;
+  bool enabled;
+  CephContext* ctx;
+  RGWDeleteMultiObjLogGuard(const RGWRados* store, const string& bucket_name) :
+    bucket_name(bucket_name),
+    enabled(store->ctx()->_conf->rgw_trace_deletes),
+    ctx(store->ctx())
+  {}
+  virtual ~RGWDeleteMultiObjLogGuard()
+  {
+    if (enabled) {
+      bool all = true;
+      for (const auto& p : results) {
+        ldout(ctx, 0) << "RGWDeleteMultiObj " << bucket_name << "/" << p.first
+                         << (p.second == 0 ? " OK" : (p.second == -ENOENT ? " ENOENT" : " FAILED"))
+                         << dendl;
+        if (p.second != 0 && p.second != -ENOENT) {
+          all = false;
+        }
+      }
+      for (const auto& name : names) {
+        ldout(ctx, 0) << "RGWDeleteMultiObj " << bucket_name << "/" << name << " NOT DELETED" << dendl;
+      }
+      ldout(ctx, 0) << "RGWDeleteMultiObj " << bucket_name
+                       << ((all && names.empty()) ? " COMPLETED" : " PARTIAL")
+                       << dendl;
+    }
+  }
+};
+
 void RGWDeleteMultiObj::execute()
 {
   RGWMultiDelDelete *multi_delete;
@@ -5784,6 +5898,8 @@ void RGWDeleteMultiObj::execute()
   RGWMultiDelXMLParser parser;
   int num_processed = 0;
   RGWObjectCtx *obj_ctx = static_cast<RGWObjectCtx *>(s->obj_ctx);
+
+  RGWDeleteMultiObjLogGuard log_guard(store, bucket.name);
 
   op_ret = get_params();
   if (op_ret < 0) {
@@ -5819,6 +5935,8 @@ void RGWDeleteMultiObj::execute()
     goto done;
   }
 
+  log_guard.set_key_list(multi_delete->objects);
+
   for (iter = multi_delete->objects.begin();
         iter != multi_delete->objects.end() && num_processed < max_to_delete;
         ++iter, num_processed++) {
@@ -5847,6 +5965,7 @@ void RGWDeleteMultiObj::execute()
     del_op.params.obj_owner = s->owner;
 
     op_ret = del_op.delete_obj();
+    log_guard.set_result(obj.key.name, op_ret);
     if (op_ret == -ENOENT) {
       op_ret = 0;
     }
