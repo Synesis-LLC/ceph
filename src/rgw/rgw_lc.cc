@@ -408,7 +408,7 @@ int RGWLC::bucket_lc_process(string& shard_id)
               continue;
             ret = remove_expired_obj(bucket_info, obj_iter->key, true);
             if (ret < 0) {
-              ldout(cct, 0) << "ERROR: remove_expired_obj " << dendl;
+              ldout(cct, 0) << "ERROR: remove_expired_obj " << obj_iter->key << " " << ret << dendl;
             } else {
               ldout(cct, 10) << "DELETED:" << bucket_name << ":" << key << dendl;
             }
@@ -511,7 +511,7 @@ int RGWLC::bucket_lc_process(string& shard_id)
             }
             ret = remove_expired_obj(bucket_info, obj_iter->key, remove_indeed);
             if (ret < 0) {
-              ldout(cct, 0) << "ERROR: remove_expired_obj " << dendl;
+              ldout(cct, 0) << "ERROR: remove_expired_obj " << obj_iter->key << " " << ret << dendl;
             } else {
               ldout(cct, 10) << "DELETED:" << bucket_name << ":" << obj_iter->key << dendl;
             }
