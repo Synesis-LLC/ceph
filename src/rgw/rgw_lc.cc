@@ -407,10 +407,15 @@ int RGWLC::bucket_lc_process(string& shard_id)
             if (state->mtime != obj_iter->meta.mtime)//Check mtime again to avoid delete a recently update object as much as possible
               continue;
             ret = remove_expired_obj(bucket_info, obj_iter->key, true);
-            if (ret < 0) {
-              ldout(cct, 0) << "ERROR: remove_expired_obj " << obj_iter->key << " " << ret << dendl;
+            if (ret == -ENOENT) {
+              ldout(cct, 5) << __LINE__ << ": remove_expired_obj "
+                            << bucket_name << "/" << obj_iter->key << " : ENOENT" << dendl;
+            } else if (ret < 0) {
+              ldout(cct, 0) << __LINE__ << ": ERROR: remove_expired_obj "
+                            << bucket_name << "/" << obj_iter->key << " : " << ret << dendl;
             } else {
-              ldout(cct, 10) << "DELETED:" << bucket_name << ":" << key << dendl;
+              ldout(cct, 10) << __LINE__ << ": DELETED:"
+                             << bucket_name << "/" << obj_iter->key << dendl;
             }
           }
         }
@@ -510,10 +515,15 @@ int RGWLC::bucket_lc_process(string& shard_id)
                 continue;
             }
             ret = remove_expired_obj(bucket_info, obj_iter->key, remove_indeed);
-            if (ret < 0) {
-              ldout(cct, 0) << "ERROR: remove_expired_obj " << obj_iter->key << " " << ret << dendl;
+            if (ret == -ENOENT) {
+              ldout(cct, 5) << __LINE__ << ": remove_expired_obj "
+                            << bucket_name << "/" << obj_iter->key << " : ENOENT" << dendl;
+            } else if (ret < 0) {
+              ldout(cct, 0) << __LINE__ << ": ERROR: remove_expired_obj "
+                            << bucket_name << "/" << obj_iter->key << " : " << ret << dendl;
             } else {
-              ldout(cct, 10) << "DELETED:" << bucket_name << ":" << obj_iter->key << dendl;
+              ldout(cct, 10) << __LINE__ << ": DELETED:"
+                             << bucket_name << "/" << obj_iter->key << dendl;
             }
           }
         }
