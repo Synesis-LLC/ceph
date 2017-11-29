@@ -549,7 +549,7 @@ int RGWLC::bucket_lc_post(int index, int max_lock_sec, pair<string, int >& entry
   do {
     int ret = l.lock_exclusive(&store->lc_pool_ctx, obj_names[index]);
     if (ret == -EBUSY) { /* already locked by another lc processor */
-      dout(0) << "RGWLC::bucket_lc_post() failed to acquire lock on, sleep 5, try again" << obj_names[index] << dendl;
+      dout(2) << "RGWLC::bucket_lc_post() failed to acquire lock on, sleep 5, try again" << obj_names[index] << dendl;
       sleep(5);
       continue;
     }
@@ -636,7 +636,7 @@ int RGWLC::process(int index, int max_lock_secs)
 
     int ret = l.lock_exclusive(&store->lc_pool_ctx, obj_names[index]);
     if (ret == -EBUSY) { /* already locked by another lc processor */
-      dout(0) << "RGWLC::process() failed to acquire lock on, sleep 5, try again" << obj_names[index] << dendl;
+      dout(2) << "RGWLC::process() failed to acquire lock on, sleep 5, try again" << obj_names[index] << dendl;
       sleep(5);
       continue;
     }
