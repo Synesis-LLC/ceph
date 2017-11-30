@@ -85,7 +85,7 @@ int RGWLifecycleConfiguration::check_and_add_rule(LCRule *rule)
   }
   string id;
   rule->get_id(id);
-  if (rule_map.find(id) != rule_map.end()) {  //id shouldn't be the same 
+  if (rule_map.find(id) != rule_map.end()) {  //id shouldn't be the same
     return -EINVAL;
   }
   rule_map.insert(pair<string, LCRule>(id, *rule));
@@ -97,7 +97,7 @@ int RGWLifecycleConfiguration::check_and_add_rule(LCRule *rule)
 }
 
 bool RGWLifecycleConfiguration::has_same_action(const lc_op& first, const lc_op& second) {
-  if ((first.expiration > 0 || first.expiration_date != boost::none) && 
+  if ((first.expiration > 0 || first.expiration_date != boost::none) &&
     (second.expiration > 0 || second.expiration_date != boost::none)) {
     return true;
   } else if (first.noncur_expiration > 0 && second.noncur_expiration > 0) {
@@ -110,8 +110,8 @@ bool RGWLifecycleConfiguration::has_same_action(const lc_op& first, const lc_op&
 }
 
 //Rules are conflicted: if one rule's prefix starts with other rule's prefix, and these two rules
-//define same action. 
-bool RGWLifecycleConfiguration::valid() 
+//define same action.
+bool RGWLifecycleConfiguration::valid()
 {
   if (prefix_map.size() < 2) {
     return true;
@@ -200,22 +200,19 @@ bool RGWLC::if_already_run_today(time_t& start_date)
   time_t begin_of_day;
   utime_t now = ceph_clock_now();
   localtime_r(&start_date, &bdt);
+  time_t one_day;
 
   if (cct->_conf->rgw_lc_debug_interval > 0) {
-    if (now - start_date < cct->_conf->rgw_lc_debug_interval)
-      return true;
-    else
-      return false;
+    one_day = cct->_conf->rgw_lc_debug_interval;
+  } else {
+    one_day = 24*60*60;
+    bdt.tm_hour = 0;
+    bdt.tm_min = 0;
+    bdt.tm_sec = 0;
   }
-
-  bdt.tm_hour = 0;
-  bdt.tm_min = 0;
-  bdt.tm_sec = 0;
   begin_of_day = mktime(&bdt);
-  if (now - begin_of_day < 24*60*60)
-    return true;
-  else
-    return false;
+
+  return (now - begin_of_day) < one_day;
 }
 
 int RGWLC::bucket_lc_prepare(int index)
@@ -332,6 +329,9 @@ int RGWLC::bucket_lc_process(string& shard_id)
   string bucket_tenant = result[0];
   string bucket_name = result[1];
   string bucket_id = result[2];
+
+  dout(20) << "RGWLC::bucket_lc_process(\"" << shard_id << "\")" << dendl;
+
   int ret = store->get_bucket_info(obj_ctx, bucket_tenant, bucket_name, bucket_info, NULL, &bucket_attrs);
   if (ret < 0) {
     ldout(cct, 0) << "LC:get_bucket_info failed" << bucket_name <<dendl;
@@ -363,11 +363,11 @@ int RGWLC::bucket_lc_process(string& shard_id)
   list_op.params.list_versions = bucket_info.versioned();
   if (!bucket_info.versioned()) {
     for(auto prefix_iter = prefix_map.begin(); prefix_iter != prefix_map.end(); ++prefix_iter) {
-      if (!prefix_iter->second.status || 
+      if (!prefix_iter->second.status ||
         (prefix_iter->second.expiration <=0 && prefix_iter->second.expiration_date == boost::none)) {
         continue;
       }
-      if (prefix_iter->second.expiration_date != boost::none && 
+      if (prefix_iter->second.expiration_date != boost::none &&
         ceph_clock_now() < ceph::real_clock::to_time_t(*prefix_iter->second.expiration_date)) {
         continue;
       }
@@ -383,7 +383,7 @@ int RGWLC::bucket_lc_process(string& shard_id)
           ldout(cct, 0) << "ERROR: store->list_objects():" <<dendl;
           return ret;
         }
-        
+
         utime_t now = ceph_clock_now();
         bool is_expired;
         for (auto obj_iter = objs.begin(); obj_iter != objs.end(); ++obj_iter) {
@@ -427,12 +427,12 @@ int RGWLC::bucket_lc_process(string& shard_id)
   //bucket versioning is enabled or suspended
     rgw_obj_key pre_marker;
     for(auto prefix_iter = prefix_map.begin(); prefix_iter != prefix_map.end(); ++prefix_iter) {
-      if (!prefix_iter->second.status || (prefix_iter->second.expiration <= 0 
+      if (!prefix_iter->second.status || (prefix_iter->second.expiration <= 0
         && prefix_iter->second.expiration_date == boost::none
         && prefix_iter->second.noncur_expiration <= 0 && !prefix_iter->second.dm_expiration)) {
         continue;
       }
-      if (prefix_iter != prefix_map.begin() && 
+      if (prefix_iter != prefix_map.begin() &&
         (prefix_iter->first.compare(0, prev(prefix_iter)->first.length(), prev(prefix_iter)->first) == 0)) {
         list_op.next_marker = pre_marker;
       } else {
@@ -651,16 +651,6 @@ int RGWLC::process(int index, int max_lock_secs)
       goto exit;
     }
 
-    if(!if_already_run_today(head.start_date)) {
-      head.start_date = now;
-      head.marker.clear();
-      ret = bucket_lc_prepare(index);
-      if (ret < 0) {
-      dout(0) << "RGWLC::process() failed to update lc object " << obj_names[index] << ret << dendl;
-      goto exit;
-      }
-    }
-
     ret = cls_rgw_lc_get_next_entry(store->lc_pool_ctx, obj_names[index], head.marker, entry);
     if (ret < 0) {
       dout(0) << "RGWLC::process() failed to get obj entry " << obj_names[index] << dendl;
@@ -668,7 +658,30 @@ int RGWLC::process(int index, int max_lock_secs)
     }
 
     if (entry.first.empty())
+    {
+      if (head.marker.empty())
+      {
+        // List empty, exit.
+        goto exit;
+      }
+      // List finished, reset head and status.
+      if(!if_already_run_today(head.start_date)) {
+        ret = bucket_lc_prepare(index);
+        if (ret < 0) {
+          dout(0) << "RGWLC::process() failed to update lc object " << obj_names[index] << ret << dendl;
+          goto exit;
+        }
+        head.start_date = now;
+        head.marker.clear();
+        ret = cls_rgw_lc_put_head(store->lc_pool_ctx, obj_names[index], head);
+        if (ret < 0) {
+          dout(0) << "RGWLC::process() failed to put head " << obj_names[index] << dendl;
+          goto exit;
+        }
+        continue;
+      }
       goto exit;
+    }
 
     entry.second = lc_processing;
     ret = cls_rgw_lc_set_entry(store->lc_pool_ctx, obj_names[index],  entry);
