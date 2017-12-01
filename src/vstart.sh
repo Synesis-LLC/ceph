@@ -1029,7 +1029,7 @@ do_rgw()
     # Start server
     RGWDEBUG=""
     if [ "$debug" -ne 0 ]; then
-        RGWDEBUG="--debug-rgw=20"
+        RGWDEBUG="--debug-rgw=0"
     fi
 
     RGWSUDO=
