@@ -1,3 +1,10 @@
+ceph (12.2.2-1.1) UNRELEASED; urgency=medium
+
+  * Non-maintainer upload.
+  * 
+
+ -- Aleksei Gutikov <aleksey.gutikov@synesis.ru>  Mon, 04 Dec 2017 13:03:28 +0300
+
 ceph (12.2.2-1) stable; urgency=medium
 
   * New upstream release
