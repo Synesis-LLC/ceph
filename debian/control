@@ -633,7 +633,7 @@ Description: Ceph distributed file system client library (development files)
 Package: librgw2
 Architecture: linux-any
 Section: libs
-Depends: librados2 (= ${binary:Version}),
+Depends: librados2 (>= ${source:Upstream-Version}),
          ${misc:Depends},
          ${shlibs:Depends},
 Description: RADOS Gateway client library
@@ -675,7 +675,7 @@ Description: RADOS client library (development files)
 
 Package: radosgw
 Architecture: linux-any
-Depends: ceph-common (= ${binary:Version}),
+Depends: ceph-common (>= ${source:Upstream-Version}),
          librgw2 (= ${binary:Version}),
          mime-support,
          ${misc:Depends},
