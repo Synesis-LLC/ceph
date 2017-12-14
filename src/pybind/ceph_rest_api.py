@@ -1,4 +1,4 @@
-# vim: ts=4 sw=4 smarttab expandtab
+# coding: utf-8
 
 import errno
 import json
@@ -11,14 +11,9 @@ import xml.etree.ElementTree
 import xml.sax.saxutils
 
 import flask
-from ceph_argparse import \
-    ArgumentError, CephPgid, CephOsdName, CephChoices, CephPrefix, \
-    concise_sig, descsort, parse_funcsig, parse_json_funcsigs, \
-    validate, json_command
 
-#
-# Globals and defaults
-#
+import ceph_argparse
+
 
 DEFAULT_ADDR = '::'
 DEFAULT_PORT = '5000'
@@ -27,17 +22,12 @@ DEFAULT_ID = 'restapi'
 DEFAULT_BASEURL = '/api/v0.1'
 DEFAULT_LOG_LEVEL = 'warning'
 DEFAULT_LOGDIR = '/var/log/ceph'
-# default client name will be 'client.<DEFAULT_ID>'
 
 # network failure could keep the underlying json_command() waiting forever,
 # set a timeout, so it bails out on timeout.
 DEFAULT_TIMEOUT = 20
 # and retry in that case.
 DEFAULT_TRIES = 5
-
-# 'app' must be global for decorators, etc.
-APPNAME = '__main__'
-app = flask.Flask(APPNAME)
 
 LOGLEVELS = {
     'critical': logging.CRITICAL,
@@ -48,22 +38,33 @@ LOGLEVELS = {
 }
 
 
+app = flask.Flask(__name__)
+
+
 def find_up_osd(app):
-    '''
-    Find an up OSD.  Return the last one that's up.
+    """Find an up OSD. Return the last one that's up.
+
     Returns id as an int.
-    '''
-    ret, outbuf, outs = json_command(app.ceph_cluster, prefix="osd dump",
-                                     argdict=dict(format='json'))
+    """
+    ret, outbuf, outs = ceph_argparse.json_command(
+        app.ceph_cluster,
+        prefix='osd dump',
+        argdict=dict(format='json'),
+    )
+
     if ret:
-        raise EnvironmentError(ret, 'Can\'t get osd dump output')
+        raise EnvironmentError(ret, "Can't get osd dump output: {!r}".format(
+            ret))
+
     try:
         osddump = json.loads(outbuf)
     except:
-        raise EnvironmentError(errno.EINVAL, 'Invalid JSON back from osd dump')
+        raise EnvironmentError(errno.EINVAL, "Invalid JSON back from osd dump")
+
     osds = [osd['osd'] for osd in osddump['osds'] if osd['up']]
     if not osds:
         return None
+
     return int(osds[-1])
 
 
@@ -71,26 +72,28 @@ METHOD_DICT = {'r': ['GET'], 'w': ['PUT', 'DELETE']}
 
 
 def api_setup(app, conf, cluster, clientname, clientid, args):
-    '''
-    This is done globally, and cluster connection kept open for
-    the lifetime of the daemon.  librados should assure that even
+    """This is done globally, and cluster connection kept open for
+    the lifetime of the daemon. librados should assure that even
     if the cluster goes away and comes back, our connection remains.
 
     Initialize the running instance.  Open the cluster, get the command
     signatures, module, perms, and help; stuff them away in the app.ceph_urls
     dict.  Also save app.ceph_sigdict for help() handling.
-    '''
+    """
     def get_command_descriptions(cluster, target=('mon', '')):
-        ret, outbuf, outs = json_command(cluster, target,
-                                         prefix='get_command_descriptions',
-                                         timeout=30)
+        ret, outbuf, outs = ceph_argparse.json_command(
+            cluster,
+            target,
+            prefix='get_command_descriptions',
+            timeout=30,
+        )
         if ret:
             err = "Can't get command descriptions: {0}".format(outs)
             app.logger.error(err)
             raise EnvironmentError(ret, err)
 
         try:
-            sigdict = parse_json_funcsigs(outbuf, 'rest')
+            sigdict = ceph_argparse.parse_json_funcsigs(outbuf, 'rest')
         except Exception as e:
             err = "Can't parse command descriptions: {}".format(e)
             app.logger.error(err)
@@ -111,8 +114,8 @@ def api_setup(app, conf, cluster, clientname, clientid, args):
     app.ceph_cluster.conf_parse_argv(args)
     app.ceph_cluster.connect()
 
-    app.ceph_baseurl = app.ceph_cluster.conf_get('restapi_base_url') \
-        or DEFAULT_BASEURL
+    app.ceph_baseurl = app.ceph_cluster.conf_get(
+        'restapi_base_url') or DEFAULT_BASEURL
     if app.ceph_baseurl.endswith('/'):
         app.ceph_baseurl = app.ceph_baseurl[:-1]
     addr = app.ceph_cluster.conf_get('public_addr') or DEFAULT_ADDR
@@ -220,30 +223,31 @@ def api_setup(app, conf, cluster, clientname, clientid, args):
 
 
 def generate_url_and_params(app, sig, flavor):
-    '''
-    Digest command signature from cluster; generate an absolute
+    """Digest command signature from cluster.
+
+    Generate an absolute
     (including app.ceph_baseurl) endpoint from all the prefix words,
     and a list of non-prefix param descs
-    '''
+    """
 
     url = ''
     params = []
     # the OSD command descriptors don't include the 'tell <target>', so
     # tack it onto the front of sig
     if flavor == 'tell':
-        tellsig = parse_funcsig(['tell',
-                                {'name': 'target', 'type': 'CephOsdName'}])
+        tellsig = ceph_argparse.parse_funcsig(
+            ['tell', {'name': 'target', 'type': 'CephOsdName'}])
         sig = tellsig + sig
 
     for desc in sig:
         # prefixes go in the URL path
-        if desc.t == CephPrefix:
+        if desc.t == ceph_argparse.CephPrefix:
             url += '/' + desc.instance.prefix
         else:
             # tell/<target> is a weird case; the URL includes what
             # would everywhere else be a parameter
             if flavor == 'tell' and ((desc.t, desc.name) ==
-               (CephOsdName, 'target')):
+               (ceph_argparse.CephOsdName, 'target')):
                 url += '/<target>'
             else:
                 params.append(desc)
@@ -255,16 +259,14 @@ def generate_url_and_params(app, sig, flavor):
 # end setup (import-time) functions, begin request-time functions
 #
 def concise_sig_for_uri(sig, flavor):
-    '''
-    Return a generic description of how one would send a REST request for sig
-    '''
+    """Return a generic description of how one would send a REST request for sig."""
     prefix = []
     args = []
     ret = ''
     if flavor == 'tell':
         ret = 'tell/<osdid-or-pgid>/'
     for d in sig:
-        if d.t == CephPrefix:
+        if d.t == ceph_argparse.CephPrefix:
             prefix.append(d.instance.prefix)
         else:
             args.append(d.name + '=' + str(d))
@@ -275,16 +277,14 @@ def concise_sig_for_uri(sig, flavor):
 
 
 def show_human_help(prefix):
-    '''
-    Dump table showing commands matching prefix
-    '''
+    """Dump table showing commands matching prefix."""
     # XXX There ought to be a better discovery mechanism than an HTML table
     s = '<html><body><table border=1><th>Possible commands:</th><th>Method</th><th>Description</th>'
 
     permmap = {'r': 'GET', 'rw': 'PUT', 'rx': 'GET', 'rwx': 'PUT'}
     line = ''
-    for cmdsig in sorted(app.ceph_sigdict.itervalues(), cmp=descsort):
-        concise = concise_sig(cmdsig['sig'])
+    for cmdsig in sorted(app.ceph_sigdict.itervalues(), cmp=ceph_argparse.descsort):
+        concise = ceph_argparse.concise_sig(cmdsig['sig'])
         flavor = cmdsig.get('flavor', 'mon')
         if flavor == 'tell':
             concise = 'tell/<target>/' + concise
@@ -309,26 +309,16 @@ def show_human_help(prefix):
         return ''
 
 
-@app.before_request
-def log_request():
-    '''
-    For every request, log it.  XXX Probably overkill for production
-    '''
-    app.logger.info(flask.request.url + " from " + flask.request.remote_addr + " " + flask.request.user_agent.string)
-    app.logger.debug("Accept: %s", flask.request.accept_mimetypes.values())
-
-
 @app.route('/')
 def root_redir():
     return flask.redirect(app.ceph_baseurl)
 
 
 def make_response(fmt, output, statusmsg, errorcode):
-    '''
-    If formatted output, cobble up a response object that contains the
+    """If formatted output, cobble up a response object that contains the
     output and status wrapped in enclosing objects; if nonformatted, just
     use output+status.  Return HTTP status errorcode in any event.
-    '''
+    """
     response = output
     if fmt:
         if 'json' in fmt:
@@ -351,7 +341,7 @@ def make_response(fmt, output, statusmsg, errorcode):
             # s = ET.SubElement(resp_elem, 'status')
             # s.text = statusmsg
             # response = ET.tostring(resp_elem)
-            response = '''
+            response = """
 <response>
   <output>
     {0}
@@ -359,7 +349,7 @@ def make_response(fmt, output, statusmsg, errorcode):
   <status>
     {1}
   </status>
-</response>'''.format(response, xml.sax.saxutils.escape(statusmsg))
+</response>""".format(response, xml.sax.saxutils.escape(statusmsg))
     else:
         if not 200 <= errorcode < 300:
             response = response + '\n' + statusmsg + '\n'
@@ -368,12 +358,13 @@ def make_response(fmt, output, statusmsg, errorcode):
 
 
 def handler(catchall_path=None, fmt=None, target=None):
-    '''
-    Main endpoint handler; generic for every endpoint, including catchall.
+    """Main endpoint handler.
+
+    Generic for every endpoint, including catchall.
     Handles the catchall, anything with <.fmt>, anything with embedded
     <target>.  Partial match or ?help cause the HTML-table
     "show_human_help" output.
-    '''
+    """
 
     ep = catchall_path or flask.request.endpoint
     ep = ep.replace('.<fmt>', '')
@@ -383,7 +374,7 @@ def handler(catchall_path=None, fmt=None, target=None):
 
     # demand that endpoint begin with app.ceph_baseurl
     if not ep.startswith(app.ceph_baseurl):
-        return make_response(fmt, '', 'Page not found', 404)
+        return make_response(fmt, "", "Page not found", 404)
 
     rel_ep = ep[len(app.ceph_baseurl) + 1:]
 
@@ -400,15 +391,15 @@ def handler(catchall_path=None, fmt=None, target=None):
 
     if target:
         # got tell/<target>; validate osdid or pgid
-        name = CephOsdName()
-        pgidobj = CephPgid()
+        name = ceph_argparse.CephOsdName()
+        pgidobj = ceph_argparse.CephPgid()
         try:
             name.valid(target)
-        except ArgumentError:
+        except ceph_argparse.ArgumentError:
             # try pgid
             try:
                 pgidobj.valid(target)
-            except ArgumentError:
+            except ceph_argparse.ArgumentError:
                 return flask.make_response("invalid osdid or pgid", 400)
             else:
                 # it's a pgid
@@ -443,10 +434,14 @@ def handler(catchall_path=None, fmt=None, target=None):
 
         # allow '?help' for any specifically-known endpoint
         if 'help' in flask.request.args:
-            response = flask.make_response('{0}: {1}'.
-                                           format(prefix +
-                                                  concise_sig(paramsig),
-                                                  urldict['help']))
+            response = flask.make_response(
+                '{0}: {1}'.
+                format(
+                    prefix +
+                    ceph_argparse.concise_sig(paramsig),
+                    urldict['help'],
+                )
+            )
             response.headers['Content-Type'] = 'text/plain'
             return response
 
@@ -461,7 +456,7 @@ def handler(catchall_path=None, fmt=None, target=None):
 
             # is this a valid set of params?
             try:
-                argdict = validate(args, paramsig)
+                argdict = ceph_argparse.validate(args, paramsig)
                 found = urldict
                 break
             except Exception as e:
@@ -475,7 +470,7 @@ def handler(catchall_path=None, fmt=None, target=None):
             break
 
     if not found:
-        return make_response(fmt, '', exc + '\n', 400)
+        return make_response(fmt, "", exc + "\n", 400)
 
     argdict['format'] = fmt or 'plain'
     argdict['module'] = found['module']
@@ -486,28 +481,42 @@ def handler(catchall_path=None, fmt=None, target=None):
     if not cmdtarget:
         cmdtarget = ('mon', '')
 
-    app.logger.debug('sending command prefix %s argdict %s', prefix, argdict)
+    app.logger.debug("Sending command prefix %s argdict %s", prefix, argdict)
 
     for _ in range(DEFAULT_TRIES):
-        ret, outbuf, outs = json_command(app.ceph_cluster, prefix=prefix,
-                                         target=cmdtarget,
-                                         inbuf=flask.request.data,
-                                         argdict=argdict,
-                                         timeout=DEFAULT_TIMEOUT)
+        ret, outbuf, outs = ceph_argparse.json_command(
+            app.ceph_cluster,
+            prefix=prefix,
+            target=cmdtarget,
+            inbuf=flask.request.data,
+            argdict=argdict,
+            timeout=DEFAULT_TIMEOUT
+        )
         if ret != -errno.EINTR:
             break
     else:
-        return make_response(fmt, '',
-                             'Timedout: {0} ({1})'.format(outs, ret), 504)
+        return make_response(
+            fmt,
+            "",
+            "Timedout: {0} ({1})".format(outs, ret),
+            504,
+        )
     if ret:
-        return make_response(fmt, '', 'Error: {0} ({1})'.format(outs, ret), 400)
+        return make_response(
+            fmt,
+            "",
+            "Error: {0} ({1})".format(outs, ret),
+            400,
+        )
 
     response = make_response(fmt, outbuf, outs or 'OK', 200)
     if fmt:
         contenttype = 'application/' + fmt.replace('-pretty', '')
     else:
         contenttype = 'text/plain'
+
     response.headers['Content-Type'] = contenttype
+
     return response
 
 
