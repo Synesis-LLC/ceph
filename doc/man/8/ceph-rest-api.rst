@@ -99,9 +99,8 @@ Discovery
 
 Human-readable discovery of supported commands and parameters, along
 with a small description of each command, is provided when the requested
-path is incomplete/partially matching.  Requesting / will redirect to
-the value of  **restapi base url**, and that path will give a full list
-of all known commands.
+path is incomplete/partially matching.  Requesting **restapi base url**
+path will give a full list of all known commands.
 For example, requesting ``api/vX.X/mon`` will return the list of API calls for
 monitors - ``api/vX.X/osd`` will return the list of API calls for OSD and so on.
 
