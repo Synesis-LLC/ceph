@@ -15,10 +15,6 @@ import flask
 import ceph_argparse
 
 
-DEFAULT_ADDR = '::'
-DEFAULT_PORT = '5000'
-DEFAULT_ID = 'restapi'
-
 DEFAULT_BASEURL = '/api/v0.1'
 DEFAULT_LOG_LEVEL = 'warning'
 DEFAULT_LOGDIR = '/var/log/ceph'
@@ -66,157 +62,6 @@ def find_up_osd(app):
 
 
 METHOD_DICT = {'r': ['GET'], 'w': ['PUT', 'DELETE']}
-
-
-def api_setup(app, conf, cluster, clientname, clientid, args):
-    """This is done globally, and cluster connection kept open for
-    the lifetime of the daemon. librados should assure that even
-    if the cluster goes away and comes back, our connection remains.
-
-    Initialize the running instance.  Open the cluster, get the command
-    signatures, module, perms, and help; stuff them away in the app.ceph_urls
-    dict.  Also save app.ceph_sigdict for help() handling.
-    """
-    def get_command_descriptions(cluster, target=('mon', '')):
-        ret, outbuf, outs = ceph_argparse.json_command(
-            cluster,
-            target,
-            prefix='get_command_descriptions',
-            timeout=30,
-        )
-        if ret:
-            err = "Can't get command descriptions: {0}".format(outs)
-            app.logger.error(err)
-            raise EnvironmentError(ret, err)
-
-        try:
-            sigdict = ceph_argparse.parse_json_funcsigs(outbuf, 'rest')
-        except Exception as e:
-            err = "Can't parse command descriptions: {}".format(e)
-            app.logger.error(err)
-            raise EnvironmentError(err)
-        return sigdict
-
-    app.ceph_cluster = cluster or 'ceph'
-    app.ceph_urls = {}
-    app.ceph_sigdict = {}
-    app.ceph_baseurl = ''
-
-    conf = conf or ''
-    cluster = cluster or 'ceph'
-    clientid = clientid or DEFAULT_ID
-    clientname = clientname or 'client.' + clientid
-
-    app.ceph_cluster = rados.Rados(name=clientname, conffile=conf)
-    app.ceph_cluster.conf_parse_argv(args)
-    app.ceph_cluster.connect()
-
-    app.ceph_baseurl = app.ceph_cluster.conf_get(
-        'restapi_base_url') or DEFAULT_BASEURL
-    if app.ceph_baseurl.endswith('/'):
-        app.ceph_baseurl = app.ceph_baseurl[:-1]
-    addr = app.ceph_cluster.conf_get('public_addr') or DEFAULT_ADDR
-
-    if addr == '-':
-        addr = None
-        port = None
-    else:
-        # remove the type prefix from the conf value if any
-        for t in ('legacy:', 'msgr2:'):
-            if addr.startswith(t):
-                addr = addr[len(t):]
-                break
-        # remove any nonce from the conf value
-        addr = addr.split('/')[0]
-        addr, port = addr.rsplit(':', 1)
-    addr = addr or DEFAULT_ADDR
-    port = port or DEFAULT_PORT
-    port = int(port)
-
-    loglevel = app.ceph_cluster.conf_get('restapi_log_level') \
-        or DEFAULT_LOG_LEVEL
-    # ceph has a default log file for daemons only; clients (like this)
-    # default to "".  Override that for this particular client.
-    logfile = app.ceph_cluster.conf_get('log_file')
-    if not logfile:
-        logfile = os.path.join(
-            DEFAULT_LOGDIR,
-            '{cluster}-{clientname}.{pid}.log'.format(
-                cluster=cluster,
-                clientname=clientname,
-                pid=os.getpid()
-            )
-        )
-    app.logger.addHandler(logging.handlers.WatchedFileHandler(logfile))
-    app.logger.setLevel(LOGLEVELS[loglevel.lower()])
-    for h in app.logger.handlers:
-        h.setFormatter(logging.Formatter(
-            '%(asctime)s %(name)s %(levelname)s: %(message)s'))
-
-    app.ceph_sigdict = get_command_descriptions(app.ceph_cluster)
-
-    osdid = find_up_osd(app)
-    if osdid is not None:
-        osd_sigdict = get_command_descriptions(app.ceph_cluster,
-                                               target=('osd', int(osdid)))
-
-        # shift osd_sigdict keys up to fit at the end of the mon's app.ceph_sigdict
-        maxkey = sorted(app.ceph_sigdict.keys())[-1]
-        maxkey = int(maxkey.replace('cmd', ''))
-        osdkey = maxkey + 1
-        for k, v in osd_sigdict.iteritems():
-            newv = v
-            newv['flavor'] = 'tell'
-            globk = 'cmd' + str(osdkey)
-            app.ceph_sigdict[globk] = newv
-            osdkey += 1
-
-    # app.ceph_sigdict maps "cmdNNN" to a dict containing:
-    # 'sig', an array of argdescs
-    # 'help', the helptext
-    # 'module', the Ceph module this command relates to
-    # 'perm', a 'rwx*' string representing required permissions, and also
-    #    a hint as to whether this is a GET or POST/PUT operation
-    # 'avail', a comma-separated list of strings of consumers that should
-    #    display this command (filtered by parse_json_funcsigs() above)
-    app.ceph_urls = {}
-    for cmdnum, cmddict in app.ceph_sigdict.iteritems():
-        cmdsig = cmddict['sig']
-        flavor = cmddict.get('flavor', 'mon')
-        url, params = generate_url_and_params(app, cmdsig, flavor)
-        perm = cmddict['perm']
-        for k in METHOD_DICT.iterkeys():
-            if k in perm:
-                methods = METHOD_DICT[k]
-        urldict = {'paramsig': params,
-                   'help': cmddict['help'],
-                   'module': cmddict['module'],
-                   'perm': perm,
-                   'flavor': flavor,
-                   'methods': methods, }
-
-        # app.ceph_urls contains a list of urldicts (usually only one long)
-        if url not in app.ceph_urls:
-            app.ceph_urls[url] = [urldict]
-        else:
-            # If more than one, need to make union of methods of all.
-            # Method must be checked in handler
-            methodset = set(methods)
-            for old_urldict in app.ceph_urls[url]:
-                methodset |= set(old_urldict['methods'])
-            methods = list(methodset)
-            app.ceph_urls[url].append(urldict)
-
-        # add, or re-add, rule with all methods and urldicts
-        app.add_url_rule(url, url, handler, methods=methods)
-        url += '.<fmt>'
-        app.add_url_rule(url, url, handler, methods=methods)
-
-    app.logger.debug("urls added: %d", len(app.ceph_urls))
-
-    app.add_url_rule('/<path:catchall_path>', '/<path:catchall_path>',
-                     handler, methods=['GET', 'PUT'])
-    return addr, port
 
 
 def generate_url_and_params(app, sig, flavor):
@@ -280,7 +125,8 @@ def show_human_help(prefix):
 
     permmap = {'r': 'GET', 'rw': 'PUT', 'rx': 'GET', 'rwx': 'PUT'}
     line = ''
-    for cmdsig in sorted(app.ceph_sigdict.itervalues(), cmp=ceph_argparse.descsort):
+    for cmdsig in sorted(flask.current_app.ceph_sigdict.itervalues(),
+                         cmp=ceph_argparse.descsort):
         concise = ceph_argparse.concise_sig(cmdsig['sig'])
         flavor = cmdsig.get('flavor', 'mon')
         if flavor == 'tell':
@@ -512,13 +358,130 @@ def handler(catchall_path=None, fmt=None, target=None):
     return response
 
 
-#
-# Main entry point from wrapper/WSGI server: call with cmdline args,
-# get back the WSGI app entry point
-#
-def generate_app(conf, cluster, clientname, clientid, args):
+def create_app(conf, cluster, clientname, extraargs):
+    """This is done globally, and cluster connection kept open for
+    the lifetime of the daemon. librados should assure that even
+    if the cluster goes away and comes back, our connection remains.
+
+    Initialize the running instance.  Open the cluster, get the command
+    signatures, module, perms, and help; stuff them away in the app.ceph_urls
+    dict.  Also save app.ceph_sigdict for help() handling.
+    """
+    def get_command_descriptions(cluster, target=('mon', '')):
+        ret, outbuf, outs = ceph_argparse.json_command(
+            cluster,
+            target,
+            prefix='get_command_descriptions',
+            timeout=30,
+        )
+        if ret:
+            err = "Can't get command descriptions: {0}".format(outs)
+            app.logger.error(err)
+            raise EnvironmentError(ret, err)
+
+        try:
+            sigdict = ceph_argparse.parse_json_funcsigs(outbuf, 'rest')
+        except Exception as e:
+            err = "Can't parse command descriptions: {}".format(e)
+            app.logger.error(err)
+            raise EnvironmentError(err)
+        return sigdict
+
     app = flask.Flask(__name__)
-    addr, port = api_setup(app, conf, cluster, clientname, clientid, args)
-    app.ceph_addr = addr
-    app.ceph_port = port
+    app.ceph_urls = {}
+    app.ceph_sigdict = {}
+    app.ceph_baseurl = ''
+
+    app.ceph_cluster = rados.Rados(name=clientname, conffile=conf or '')
+    app.ceph_cluster.conf_parse_argv(extraargs)
+    app.ceph_cluster.connect()
+
+    app.ceph_baseurl = app.ceph_cluster.conf_get(
+        'restapi_base_url') or DEFAULT_BASEURL
+    if app.ceph_baseurl.endswith('/'):
+        app.ceph_baseurl = app.ceph_baseurl[:-1]
+
+    loglevel = app.ceph_cluster.conf_get('restapi_log_level') \
+        or DEFAULT_LOG_LEVEL
+    # ceph has a default log file for daemons only; clients (like this)
+    # default to "".  Override that for this particular client.
+    logfile = app.ceph_cluster.conf_get('log_file')
+    if not logfile:
+        logfile = os.path.join(
+            DEFAULT_LOGDIR,
+            '{cluster}-{clientname}.{pid}.log'.format(
+                cluster=cluster,
+                clientname=clientname,
+                pid=os.getpid()
+            )
+        )
+    app.logger.addHandler(logging.handlers.WatchedFileHandler(logfile))
+    app.logger.setLevel(LOGLEVELS[loglevel.lower()])
+    for h in app.logger.handlers:
+        h.setFormatter(logging.Formatter(
+            '%(asctime)s %(name)s %(levelname)s: %(message)s'))
+
+    app.ceph_sigdict = get_command_descriptions(app.ceph_cluster)
+
+    osdid = find_up_osd(app)
+    if osdid is not None:
+        osd_sigdict = get_command_descriptions(app.ceph_cluster,
+                                               target=('osd', int(osdid)))
+
+        # shift osd_sigdict keys up to fit at the end of the mon's app.ceph_sigdict
+        maxkey = sorted(app.ceph_sigdict.keys())[-1]
+        maxkey = int(maxkey.replace('cmd', ''))
+        osdkey = maxkey + 1
+        for k, v in osd_sigdict.iteritems():
+            newv = v
+            newv['flavor'] = 'tell'
+            globk = 'cmd' + str(osdkey)
+            app.ceph_sigdict[globk] = newv
+            osdkey += 1
+
+    # app.ceph_sigdict maps "cmdNNN" to a dict containing:
+    # 'sig', an array of argdescs
+    # 'help', the helptext
+    # 'module', the Ceph module this command relates to
+    # 'perm', a 'rwx*' string representing required permissions, and also
+    #    a hint as to whether this is a GET or POST/PUT operation
+    # 'avail', a comma-separated list of strings of consumers that should
+    #    display this command (filtered by parse_json_funcsigs() above)
+    app.ceph_urls = {}
+    for cmdnum, cmddict in app.ceph_sigdict.iteritems():
+        cmdsig = cmddict['sig']
+        flavor = cmddict.get('flavor', 'mon')
+        url, params = generate_url_and_params(app, cmdsig, flavor)
+        perm = cmddict['perm']
+        for k in METHOD_DICT.iterkeys():
+            if k in perm:
+                methods = METHOD_DICT[k]
+        urldict = {'paramsig': params,
+                   'help': cmddict['help'],
+                   'module': cmddict['module'],
+                   'perm': perm,
+                   'flavor': flavor,
+                   'methods': methods, }
+
+        # app.ceph_urls contains a list of urldicts (usually only one long)
+        if url not in app.ceph_urls:
+            app.ceph_urls[url] = [urldict]
+        else:
+            # If more than one, need to make union of methods of all.
+            # Method must be checked in handler
+            methodset = set(methods)
+            for old_urldict in app.ceph_urls[url]:
+                methodset |= set(old_urldict['methods'])
+            methods = list(methodset)
+            app.ceph_urls[url].append(urldict)
+
+        # add, or re-add, rule with all methods and urldicts
+        app.add_url_rule(url, url, handler, methods=methods)
+        url += '.<fmt>'
+        app.add_url_rule(url, url, handler, methods=methods)
+
+    app.logger.debug("urls added: %d", len(app.ceph_urls))
+
+    app.add_url_rule('/<path:catchall_path>', '/<path:catchall_path>',
+                     handler, methods=['GET', 'PUT'])
     return app

@@ -48,13 +48,7 @@ Options
     client-specific configuration options in the config file, and
     also is the name used for authentication when connecting
     to the cluster (the entity name appearing in 'ceph auth ls' output,
-    for example).  The default is 'client.restapi'. 
-
-.. option:: -i/--id id
-
-   specifies the client 'id', which will form the clientname
-   as 'client.<id>' if clientname is not set.  If -n/-name is
-   set, that takes precedence.
+    for example).  The default is 'client.restapi'.
 
    Also, global Ceph options are supported.
  
@@ -113,29 +107,6 @@ supported by the **ceph** tool.  One notable exception is that the
 ``ceph pg <pgid> <command>`` style of commands is supported here
 as ``tell/<pgid>/command?args``.
 
-Deployment as WSGI application
-==============================
-
-When deploying as WSGI application (say, with Apache/mod_wsgi,
-or nginx/uwsgi, or gunicorn, etc.), use the ``ceph_rest_api.py`` module
-(``ceph-rest-api`` is a thin layer around this module).  The standalone web
-server is of course not used, so address/port configuration is done in
-the WSGI server.  Use a python .wsgi module or the equivalent to call
-``app = generate_app(conf, cluster, clientname, clientid, args)`` where:
-
-* conf is as -c/--conf above
-* cluster is as --cluster above
-* clientname, -n/--name
-* clientid, -i/--id, and
-* args are any other generic Ceph arguments
-
-When app is returned, it will have attributes 'ceph_addr' and 'ceph_port'
-set to what the address and port are in the Ceph configuration;
-those may be used for the server, or ignored.
-
-Any errors reading configuration or connecting to the cluster cause an
-exception to be raised; see your WSGI server documentation for how to
-see those messages in case of problem.
 
 Availability
 ============

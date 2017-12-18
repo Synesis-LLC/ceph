@@ -201,6 +201,7 @@ Package: ceph-mon
 Architecture: linux-any
 Depends: ceph-base (= ${binary:Version}),
          python-flask,
+         python-gunicorn,
          ${misc:Depends},
          ${shlibs:Depends},
 Recommends: ceph-common,

@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-from __future__ import print_function
+from __future__ import print_function, unicode_literals
 
 import argparse
 import sys
+
+import gunicorn.app.base
 
 
 try:
@@ -12,6 +14,27 @@ try:
 except EnvironmentError as e:
     print("Error importing ceph_rest_api: ".format(e), file=sys.stderr)
     sys.exit(1)
+
+
+class CephRestApiApplication(gunicorn.app.base.BaseApplication):
+
+    def __init__(self, app_factory, factory_options=None, options=None):
+        self.app_factory = app_factory
+        self.factory_options = factory_options
+        self.options = options or {}
+        super(CephRestApiApplication, self).__init__()
+
+    def load_config(self):
+        config = dict([
+            (key, value)
+            for key, value in self.options.items()
+            if key in self.cfg.settings and value is not None
+        ])
+        for key, value in config.items():
+            self.cfg.set(key.lower(), value)
+
+    def load(self):
+        return self.app_factory(**self.factory_options)
 
 
 def parse_args():
@@ -25,34 +48,52 @@ def parse_args():
     )
     parser.add_argument(
         '--cluster',
+        default='ceph',
         help="Ceph cluster name",
     )
     parser.add_argument(
         '-n',
         '--name',
+        default='client.restapi',
         help="Ceph client name",
     )
     parser.add_argument(
-        '-i',
-        '--id',
-        default='admin',
-        help="Ceph client id",
+        '-w',
+        '--workers',
+        type=int,
+        default=4,
+        help="Number of workers",
+    )
+    parser.add_argument(
+        '-b',
+        '--bind',
+        default='localhost:5000',
+        help="Server socket to bind",
     )
 
     return parser.parse_known_args()
 
 
 def main():
-    parsed_args, rest = parse_args()
+    parsed_args, extra_args = parse_args()
 
-    app = ceph_rest_api.generate_app(
-        parsed_args.conf,
-        parsed_args.cluster,
-        parsed_args.name,
-        parsed_args.id,
-        rest,
-    )
-    app.run(host=app.ceph_addr, port=app.ceph_port)
+    factory_options = {
+        'conf': parsed_args.conf,
+        'cluster': parsed_args.cluster,
+        'clientname': parsed_args.name,
+        'extraargs': extra_args,
+    }
+    options = {
+        'bind': parsed_args.bind,
+        'workers': parsed_args.workers,
+        'preload': True,
+    }
+
+    CephRestApiApplication(
+        app_factory=ceph_rest_api.create_app,
+        factory_options=factory_options,
+        options=options,
+    ).run()
 
 
 if __name__ == '__main__':
