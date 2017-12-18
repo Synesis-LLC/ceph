@@ -9,15 +9,14 @@
 Synopsis
 ========
 
-| **ceph-rest-api** [ -c *conffile* ] [--cluster *clustername* ] [ -n *name* ] [-i *id* ]
+| **ceph-rest-api** [ -c *conffile* ] [--cluster *clustername* ] [ -n *name* ] [ -w *number of workers* ] [ -b *socket to bind* ] [ *extraargs* * ]
 
 
 Description
 ===========
 
-**ceph-rest-api** is a WSGI application that can run as a
-standalone web service or run under a web server that supports
-WSGI.  It provides much of the functionality of the **ceph**
+**ceph-rest-api** is a Gunicorn based application that can run as a
+standalone web service. It provides much of the functionality of the **ceph**
 command-line tool through an HTTP-accessible interface.
 
 Options
@@ -34,7 +33,7 @@ Options
     * /etc/ceph/${cluster}.conf
     * ~/.ceph/${cluster}.conf
     * ${cluster}.conf (in the current directory)
-  
+
     so you can also pass this option in the environment as CEPH_CONF.
 
 .. option:: --cluster clustername
@@ -50,8 +49,18 @@ Options
     to the cluster (the entity name appearing in 'ceph auth ls' output,
     for example).  The default is 'client.restapi'.
 
-   Also, global Ceph options are supported.
- 
+.. option:: -w/--workers number of workers
+
+    specifies the number of workers Gunicorn has to fork for handling
+    client requests. The default is 4.
+
+.. option:: -b/--bind socket to bind
+
+    The socket to bind in a form of 'host:port'. The default is
+    'localhost:5000'.
+
+   Also, global Ceph options are supported as a list *extraargs*.
+
 
 Configuration parameters
 ========================
