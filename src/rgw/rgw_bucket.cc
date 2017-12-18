@@ -1748,6 +1748,43 @@ int RGWBucketAdminOp::limit_check(RGWRados *store,
   return ret;
 } /* RGWBucketAdminOp::limit_check */
 
+int RGWBucketAdminOp::adjust_stats(RGWRados *store, RGWBucketAdminOpState& op_state,
+                                   RGWFormatterFlusher& flusher)
+{
+  rgw_bucket bucket = op_state.get_bucket();
+  rgw_user user = op_state.get_user_id();
+
+  cls_user_bucket_entry entry;
+  int ret = store->cls_user_get_bucket_stats(bucket, entry);
+  if (ret < 0) {
+    lderr(store->ctx()) << "ERROR: could not get bucket stats: ret=" << ret << dendl;
+    return ret;
+  }
+
+  if (op_state.objects_delta) {
+    entry.count += op_state.objects_delta;
+  }
+  if (op_state.size_delta) {
+    entry.size += op_state.size_delta;
+    entry.size_rounded += op_state.size_delta;
+  }
+
+  list<cls_user_bucket_entry> entries;
+  entries.push_back(entry);
+
+  string buckets_obj_id;
+  rgw_get_buckets_obj(user, buckets_obj_id);
+  rgw_raw_obj user_obj(store->get_zone_params().user_uid_pool, buckets_obj_id);
+
+  ret = store->cls_user_update_buckets(user_obj, entries, false);
+  if (ret < 0) {
+    lderr(store->ctx()) << "cls_user_update_buckets() returned " << ret << dendl;
+    return ret;
+  }
+
+  return 0;
+}
+
 int RGWBucketAdminOp::info(RGWRados *store, RGWBucketAdminOpState& op_state,
                   RGWFormatterFlusher& flusher)
 {

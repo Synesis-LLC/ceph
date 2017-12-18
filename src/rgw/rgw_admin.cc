@@ -66,6 +66,7 @@ void usage()
   cout << "  user enable                re-enable user after suspension\n";
   cout << "  user check                 check user info\n";
   cout << "  user stats                 show user stats as accounted by quota subsystem\n";
+  cout << "  user adjust-bucket-stats   adjust user stats for bucket, +/- bytes or/and entries (in <bucket>.buckets omap)\n";
   cout << "  user list                  list users\n";
   cout << "  caps add                   add user capabilities\n";
   cout << "  caps rm                    remove user capabilities\n";
@@ -310,6 +311,9 @@ void usage()
   cout << "   --max-objects             specify max objects (negative value to disable)\n";
   cout << "   --max-size                specify max size (in B/K/M/G/T, negative value to disable)\n";
   cout << "   --quota-scope             scope of quota (bucket, user)\n";
+  cout << "\nAdjust stats options:\n";
+  cout << "   --objects-delta           positive or negative number specify objects count to decrease or increase in stats\n";
+  cout << "   --size-delta              positive or negative number specify bytes count to decrease or increase in stats\n";
   cout << "\nOrphans search options:\n";
   cout << "   --pool                    data pool to scan for leaked rados objects in\n";
   cout << "   --num-shards              num of shards to use for keeping the temporary scan info\n";
@@ -339,6 +343,7 @@ enum {
   OPT_USER_ENABLE,
   OPT_USER_CHECK,
   OPT_USER_STATS,
+  OPT_USER_ADJUST_BUCKET_STATS,
   OPT_USER_LIST,
   OPT_SUBUSER_CREATE,
   OPT_SUBUSER_MODIFY,
@@ -568,6 +573,8 @@ static int get_cmd(const char *cmd, const char *prev_cmd, const char *prev_prev_
       return OPT_USER_CHECK;
     if (strcmp(cmd, "stats") == 0)
       return OPT_USER_STATS;
+    if (strcmp(cmd, "adjust-bucket-stats") == 0)
+      return OPT_USER_ADJUST_BUCKET_STATS;
     if (strcmp(cmd, "list") == 0)
       return OPT_USER_LIST;
   } else if (strcmp(prev_cmd, "subuser") == 0) {
@@ -2690,6 +2697,18 @@ int main(int argc, const char **argv)
       end_marker = val;
     } else if (ceph_argparse_witharg(args, i, &val, "--quota-scope", (char*)NULL)) {
       quota_scope = val;
+    } else if (ceph_argparse_witharg(args, i, &val, "--objects-delta", (char*)NULL)) {
+      bucket_op.objects_delta = strict_strtol(val.c_str(), 10, &err);
+      if (!err.empty()) {
+        cerr << "ERROR: failed to parse objects delta: " << err << std::endl;
+        return EINVAL;
+      }
+    } else if (ceph_argparse_witharg(args, i, &val, "--size-delta", (char*)NULL)) {
+      bucket_op.size_delta = strict_strtoll(val.c_str(), 10, &err);
+      if (!err.empty()) {
+        cerr << "ERROR: failed to parse size delta: " << err << std::endl;
+        return EINVAL;
+      }
     } else if (ceph_argparse_witharg(args, i, &val, "--replica-log-type", (char*)NULL)) {
       replica_log_type_str = val;
       replica_log_type = get_replicalog_type(replica_log_type_str);
@@ -6043,6 +6062,25 @@ next:
 
   if (opt_cmd == OPT_USER_CHECK) {
     check_bad_user_bucket_mapping(store, user_id, fix);
+  }
+  
+  if (opt_cmd == OPT_USER_ADJUST_BUCKET_STATS) {
+    if (bucket_name.empty() || user_id.empty()) {
+      cerr << "ERROR: bucket name and uid is required for stats operation" << std::endl;
+      return EINVAL;
+    }
+
+    ret = init_bucket(tenant, bucket_name, bucket_id, bucket_op.bucket_info, bucket_op.bucket);
+    if (ret < 0) {
+      cerr << "ERROR: could not init bucket info for bucket_name=" << bucket_name << ": " << cpp_strerror(-ret) << std::endl;
+      return -ret;
+    }
+
+    int r = RGWBucketAdminOp::adjust_stats(store, bucket_op, f);
+    if (r < 0) {
+      cerr << "failure: " << cpp_strerror(-r) << ": " << err << std::endl;
+      return -r;
+    }
   }
 
   if (opt_cmd == OPT_USER_STATS) {

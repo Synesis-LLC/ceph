@@ -220,8 +220,12 @@ struct RGWBucketAdminOpState {
   bool delete_child_objects;
   bool bucket_stored;
   int max_aio;
+  int objects_delta;
+  int64_t size_delta;
 
   rgw_bucket bucket;
+
+  RGWBucketInfo bucket_info;
 
   struct RGWBucketQuotaChanges {
     boost::optional<uint64_t> max_objects;
@@ -275,7 +279,9 @@ struct RGWBucketAdminOpState {
 
   RGWBucketAdminOpState() : list_buckets(false), stat_buckets(false), check_objects(false), 
                             fix_index(false), delete_child_objects(false),
-                            bucket_stored(false)  {}
+                            bucket_stored(false),
+                            objects_delta(0), size_delta(0)
+                            {}
 };
 
 /*
@@ -350,6 +356,7 @@ public:
   static int remove_bucket(RGWRados *store, RGWBucketAdminOpState& op_state, bool bypass_gc = false, bool keep_index_consistent = true);
   static int remove_object(RGWRados *store, RGWBucketAdminOpState& op_state);
   static int info(RGWRados *store, RGWBucketAdminOpState& op_state, RGWFormatterFlusher& flusher);
+  static int adjust_stats(RGWRados *store, RGWBucketAdminOpState& op_state, RGWFormatterFlusher& flusher);
   static int limit_check(RGWRados *store, RGWBucketAdminOpState& op_state,
 			 const std::list<std::string>& user_ids,
 			 RGWFormatterFlusher& flusher,
