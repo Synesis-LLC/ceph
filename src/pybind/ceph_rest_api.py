@@ -38,9 +38,6 @@ LOGLEVELS = {
 }
 
 
-app = flask.Flask(__name__)
-
-
 def find_up_osd(app):
     """Find an up OSD. Return the last one that's up.
 
@@ -309,11 +306,6 @@ def show_human_help(prefix):
         return ''
 
 
-@app.route('/')
-def root_redir():
-    return flask.redirect(app.ceph_baseurl)
-
-
 def make_response(fmt, output, statusmsg, errorcode):
     """If formatted output, cobble up a response object that contains the
     output and status wrapped in enclosing objects; if nonformatted, just
@@ -373,10 +365,10 @@ def handler(catchall_path=None, fmt=None, target=None):
         ep = '/' + ep
 
     # demand that endpoint begin with app.ceph_baseurl
-    if not ep.startswith(app.ceph_baseurl):
+    if not ep.startswith(flask.current_app.ceph_baseurl):
         return make_response(fmt, "", "Page not found", 404)
 
-    rel_ep = ep[len(app.ceph_baseurl) + 1:]
+    rel_ep = ep[len(flask.current_app.ceph_baseurl) + 1:]
 
     # Extensions override Accept: headers override defaults
     if not fmt:
@@ -416,7 +408,7 @@ def handler(catchall_path=None, fmt=None, target=None):
         prefix = ' '.join(rel_ep.split('/')).strip()
 
     # show "match as much as you gave me" help for unknown endpoints
-    if ep not in app.ceph_urls:
+    if ep not in flask.current_app.ceph_urls:
         helptext = show_human_help(prefix)
         if helptext:
             resp = flask.make_response(helptext, 400)
@@ -427,7 +419,7 @@ def handler(catchall_path=None, fmt=None, target=None):
 
     found = None
     exc = ''
-    for urldict in app.ceph_urls[ep]:
+    for urldict in flask.current_app.ceph_urls[ep]:
         if flask.request.method not in urldict['methods']:
             continue
         paramsig = urldict['paramsig']
@@ -481,11 +473,11 @@ def handler(catchall_path=None, fmt=None, target=None):
     if not cmdtarget:
         cmdtarget = ('mon', '')
 
-    app.logger.debug("Sending command prefix %s argdict %s", prefix, argdict)
+    flask.current_app.logger.debug("Sending command prefix %s argdict %s", prefix, argdict)
 
     for _ in range(DEFAULT_TRIES):
         ret, outbuf, outs = ceph_argparse.json_command(
-            app.ceph_cluster,
+            flask.current_app.ceph_cluster,
             prefix=prefix,
             target=cmdtarget,
             inbuf=flask.request.data,
@@ -525,6 +517,7 @@ def handler(catchall_path=None, fmt=None, target=None):
 # get back the WSGI app entry point
 #
 def generate_app(conf, cluster, clientname, clientid, args):
+    app = flask.Flask(__name__)
     addr, port = api_setup(app, conf, cluster, clientname, clientid, args)
     app.ceph_addr = addr
     app.ceph_port = port
