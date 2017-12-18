@@ -68,7 +68,6 @@ Configuration parameters
 Supported configuration parameters include:
 
 * **keyring** the keyring file holding the key for 'clientname'
-* **public addr** ip:port to listen on (default 0.0.0.0:5000)
 * **log file** (usual Ceph default)
 * **restapi base url** the base URL to answer requests on (default /api/v0.1)
 * **restapi log level** critical, error, warning, info, debug (default warning)
@@ -76,13 +75,8 @@ Supported configuration parameters include:
 Configuration parameters are searched in the standard order:
 first in the section named '<clientname>', then 'client', then 'global'.
 
-<clientname> is either supplied by -n/--name, "client.<id>" where
-<id> is supplied by -i/--id, or 'client.restapi' if neither option
-is present.
-
-A single-threaded server will run on **public addr** if the ceph-rest-api
-executed directly; otherwise, configuration is specified by the enclosing
-WSGI web server.
+<clientname> is supplied by -n/--name or 'client.restapi' is used if neither
+option is present.
 
 Commands
 ========
