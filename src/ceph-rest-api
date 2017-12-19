@@ -3,6 +3,7 @@
 
 from __future__ import print_function, unicode_literals
 
+import ConfigParser
 import argparse
 import sys
 
@@ -54,39 +55,51 @@ def parse_args():
     parser.add_argument(
         '-n',
         '--name',
-        default='client.restapi',
         help="Ceph client name",
+    )
+    parser.add_argument(
+        '-b',
+        '--bind',
+        help="Server socket to bind",
     )
     parser.add_argument(
         '-w',
         '--workers',
         type=int,
-        default=4,
         help="Number of workers",
-    )
-    parser.add_argument(
-        '-b',
-        '--bind',
-        default='localhost:5000',
-        help="Server socket to bind",
     )
 
     return parser.parse_known_args()
 
 
+def parse_conf(confpath, section, defaults={}):
+    config = ConfigParser.ConfigParser(defaults)
+    config.read(confpath)
+    if section not in config.sections():
+        config.add_section(section)
+    return config
+
+
 def main():
     parsed_args, extra_args = parse_args()
+
+    section = 'restapi'
+    defaults = {
+        'clientname': 'client.restapi',
+        'workers': '4',
+        'bind': 'localhost:5000',
+    }
+    conf = parse_conf(parsed_args.conf, section, defaults)
 
     factory_options = {
         'conf': parsed_args.conf,
         'cluster': parsed_args.cluster,
-        'clientname': parsed_args.name,
+        'clientname': parsed_args.name or conf.get(section, 'clientname'),
         'extraargs': extra_args,
     }
     options = {
-        'bind': parsed_args.bind,
-        'workers': parsed_args.workers,
-        'preload': True,
+        'bind': parsed_args.bind or conf.get(section, 'bind'),
+        'workers': parsed_args.workers or conf.getint(section, 'workers'),
     }
 
     CephRestApiApplication(
