@@ -5,16 +5,10 @@ from __future__ import print_function, unicode_literals
 
 import ConfigParser
 import argparse
-import sys
 
 import gunicorn.app.base
 
-
-try:
-    import ceph_rest_api
-except EnvironmentError as e:
-    print("Error importing ceph_rest_api: ".format(e), file=sys.stderr)
-    sys.exit(1)
+import ceph_rest_api
 
 
 class CephRestApiApplication(gunicorn.app.base.BaseApplication):
