@@ -9,15 +9,14 @@
 Synopsis
 ========
 
-| **ceph-rest-api** [ -c *conffile* ] [--cluster *clustername* ] [ -n *name* ] [-i *id* ]
+| **ceph-rest-api** [ -c *conffile* ] [--cluster *clustername* ] [ -n *name* ] [ -w *number of workers* ] [ -b *socket to bind* ] [ *extraargs* * ]
 
 
 Description
 ===========
 
-**ceph-rest-api** is a WSGI application that can run as a
-standalone web service or run under a web server that supports
-WSGI.  It provides much of the functionality of the **ceph**
+**ceph-rest-api** is a Gunicorn based application that can run as a
+standalone web service. It provides much of the functionality of the **ceph**
 command-line tool through an HTTP-accessible interface.
 
 Options
@@ -34,7 +33,7 @@ Options
     * /etc/ceph/${cluster}.conf
     * ~/.ceph/${cluster}.conf
     * ${cluster}.conf (in the current directory)
-  
+
     so you can also pass this option in the environment as CEPH_CONF.
 
 .. option:: --cluster clustername
@@ -48,16 +47,20 @@ Options
     client-specific configuration options in the config file, and
     also is the name used for authentication when connecting
     to the cluster (the entity name appearing in 'ceph auth ls' output,
-    for example).  The default is 'client.restapi'. 
+    for example).  The default is 'client.restapi'.
 
-.. option:: -i/--id id
+.. option:: -w/--workers number of workers
 
-   specifies the client 'id', which will form the clientname
-   as 'client.<id>' if clientname is not set.  If -n/-name is
-   set, that takes precedence.
+    specifies the number of workers Gunicorn has to fork for handling
+    client requests. The default is 4.
 
-   Also, global Ceph options are supported.
- 
+.. option:: -b/--bind socket to bind
+
+    The socket to bind in a form of 'host:port'. The default is
+    'localhost:5000'.
+
+   Also, global Ceph options are supported as a list *extraargs*.
+
 
 Configuration parameters
 ========================
@@ -65,7 +68,6 @@ Configuration parameters
 Supported configuration parameters include:
 
 * **keyring** the keyring file holding the key for 'clientname'
-* **public addr** ip:port to listen on (default 0.0.0.0:5000)
 * **log file** (usual Ceph default)
 * **restapi base url** the base URL to answer requests on (default /api/v0.1)
 * **restapi log level** critical, error, warning, info, debug (default warning)
@@ -73,13 +75,8 @@ Supported configuration parameters include:
 Configuration parameters are searched in the standard order:
 first in the section named '<clientname>', then 'client', then 'global'.
 
-<clientname> is either supplied by -n/--name, "client.<id>" where
-<id> is supplied by -i/--id, or 'client.restapi' if neither option
-is present.
-
-A single-threaded server will run on **public addr** if the ceph-rest-api
-executed directly; otherwise, configuration is specified by the enclosing
-WSGI web server.
+<clientname> is supplied by -n/--name or 'client.restapi' is used if neither
+option is present.
 
 Commands
 ========
@@ -102,9 +99,8 @@ Discovery
 
 Human-readable discovery of supported commands and parameters, along
 with a small description of each command, is provided when the requested
-path is incomplete/partially matching.  Requesting / will redirect to
-the value of  **restapi base url**, and that path will give a full list
-of all known commands.
+path is incomplete/partially matching.  Requesting **restapi base url**
+path will give a full list of all known commands.
 For example, requesting ``api/vX.X/mon`` will return the list of API calls for
 monitors - ``api/vX.X/osd`` will return the list of API calls for OSD and so on.
 
@@ -113,29 +109,6 @@ supported by the **ceph** tool.  One notable exception is that the
 ``ceph pg <pgid> <command>`` style of commands is supported here
 as ``tell/<pgid>/command?args``.
 
-Deployment as WSGI application
-==============================
-
-When deploying as WSGI application (say, with Apache/mod_wsgi,
-or nginx/uwsgi, or gunicorn, etc.), use the ``ceph_rest_api.py`` module
-(``ceph-rest-api`` is a thin layer around this module).  The standalone web
-server is of course not used, so address/port configuration is done in
-the WSGI server.  Use a python .wsgi module or the equivalent to call
-``app = generate_app(conf, cluster, clientname, clientid, args)`` where:
-
-* conf is as -c/--conf above
-* cluster is as --cluster above
-* clientname, -n/--name
-* clientid, -i/--id, and
-* args are any other generic Ceph arguments
-
-When app is returned, it will have attributes 'ceph_addr' and 'ceph_port'
-set to what the address and port are in the Ceph configuration;
-those may be used for the server, or ignored.
-
-Any errors reading configuration or connecting to the cluster cause an
-exception to be raised; see your WSGI server documentation for how to
-see those messages in case of problem.
 
 Availability
 ============
