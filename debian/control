@@ -200,8 +200,6 @@ Description: debugging symbols for ceph-mgr
 Package: ceph-mon
 Architecture: linux-any
 Depends: ceph-base (= ${binary:Version}),
-         python-flask,
-         python-gunicorn,
          ${misc:Depends},
          ${shlibs:Depends},
 Recommends: ceph-common,
@@ -229,6 +227,21 @@ Description: debugging symbols for ceph-mon
  block and file system storage.
  .
  This package contains the debugging symbols for ceph-mon.
+
+Package: ceph-restapi
+Architecture: linux-any
+Depends: ceph-base (= ${binary:Version}),
+         python-flask,
+         python-gunicorn (>= 19.7),
+         ${misc:Depends},
+         ${shlibs:Depends},
+Recommends: ceph-common,
+Replaces: ceph (<< 10),
+Breaks: ceph (<< 10),
+Description: provides much of the functionality of the ceph command-line
+ tool through an HTTP-accessible interface.
+ .
+ This package contains Ceph REST API web service.
 
 Package: ceph-osd
 Architecture: linux-any
