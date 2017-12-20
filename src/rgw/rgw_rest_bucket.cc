@@ -272,7 +272,7 @@ void RGWOp_Bucket_Quota_Set::execute()
     op_state.quota_changes.max_size = num_value * 1024;
   }
   RESTArgs::get_uint64(s, "max_size", op_state.quota_changes.max_size);
-  RESTArgs::get_uint64(s, "max_objects", op_state.quota_changes.max_size);
+  RESTArgs::get_uint64(s, "max_objects", op_state.quota_changes.max_objects);
   RESTArgs::get_bool(s, "enabled", op_state.quota_changes.enabled);
   RESTArgs::get_bool(s, "check_on_raw", op_state.quota_changes.check_on_raw);
 
