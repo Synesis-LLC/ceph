@@ -21,9 +21,9 @@ DEFAULT_LOGDIR = '/var/log/ceph'
 
 # network failure could keep the underlying json_command() waiting forever,
 # set a timeout, so it bails out on timeout.
-DEFAULT_TIMEOUT = 20
+DEFAULT_TIMEOUT = 5
 # and retry in that case.
-DEFAULT_TRIES = 5
+DEFAULT_TRIES = 2
 
 LOGLEVELS = {
     'critical': logging.CRITICAL,
