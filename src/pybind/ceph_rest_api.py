@@ -21,9 +21,9 @@ DEFAULT_LOGDIR = '/var/log/ceph'
 
 # network failure could keep the underlying json_command() waiting forever,
 # set a timeout, so it bails out on timeout.
-DEFAULT_TIMEOUT = 20
+DEFAULT_TIMEOUT = 5
 # and retry in that case.
-DEFAULT_TRIES = 5
+DEFAULT_TRIES = 2
 
 LOGLEVELS = {
     'critical': logging.CRITICAL,
@@ -358,6 +358,11 @@ def handler(catchall_path=None, fmt=None, target=None):
     return response
 
 
+def root_redirect():
+    """Redirects root requests to base API URL."""
+    return flask.redirect(flask.current_app.ceph_baseurl)
+
+
 def create_app(conf, cluster, clientname, extraargs):
     """This is done globally, and cluster connection kept open for
     the lifetime of the daemon. librados should assure that even
@@ -482,6 +487,7 @@ def create_app(conf, cluster, clientname, extraargs):
 
     app.logger.debug("urls added: %d", len(app.ceph_urls))
 
+    app.add_url_rule('/', 'root_redirect', root_redirect)
     app.add_url_rule('/<path:catchall_path>', '/<path:catchall_path>',
                      handler, methods=['GET', 'PUT'])
     return app

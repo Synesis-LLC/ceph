@@ -1,6 +1,12 @@
-ceph (12.2.2-1.5) UNRELEASED; urgency=medium
+ceph (12.2.2-1.6) UNRELEASED; urgency=medium
 
-  [ Andrey Martyanov ]
+  * Decrease librados command execution timeouts
+  * Redirect root requests to base API URL
+
+ -- Andrey Martyanov <andrey.martyanov@synesis.ru>  Thu, 21 Dec 2017 11:58:17 +0300
+
+ceph (12.2.2-1.5) stable; urgency=medium
+
   * Ceph REST API powered by Gunicorn and packaged separately
 
  -- Andrey Martyanov <andrey.martyanov@synesis.ru>  Tue, 19 Dec 2017 18:34:02 +0300
