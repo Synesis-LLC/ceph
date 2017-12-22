@@ -1641,7 +1641,7 @@ static bool object_is_expired(map<string, bufferlist>& attrs) {
 void RGWGetObj::execute()
 {
   utime_t start_time = s->time;
-  bufferlist bl;
+  bufferlist content_data;
   gc_invalidate_time = ceph_clock_now();
   gc_invalidate_time += (s->cct->_conf->rgw_gc_obj_min_wait / 2);
 
@@ -1688,6 +1688,26 @@ void RGWGetObj::execute()
     return;
   }
 
+  // small content stored in xattr, see rgw_small_data_as_xattr_max_size
+  attr_iter = attrs.find(RGW_ATTR_CONTENT_DATA);
+  if (attr_iter != attrs.end()) {
+    content_data = attr_iter->second;
+    s->obj_size = content_data.length();
+    total_len = s->obj_size;
+    perfcounter->inc(l_rgw_get_b, total_len);
+
+    op_ret = send_response_data(content_data, 0, total_len);
+    if (op_ret < 0) {
+      ldout(s->cct, 0) << "ERROR: failed to send_response_data ret= " << op_ret << dendl;
+      goto done_err;
+    }
+
+    perfcounter->tinc(l_rgw_get_lat,
+          (ceph_clock_now() - start_time));
+
+    return;
+  }
+
   /* start gettorrent */
   if (torrent.get_flag())
   {
@@ -1699,14 +1719,14 @@ void RGWGetObj::execute()
       goto done_err;
     }
     torrent.init(s, store);
-    op_ret = torrent.get_torrent_file(read_op, total_len, bl, obj);
+    op_ret = torrent.get_torrent_file(read_op, total_len, content_data, obj);
     if (op_ret < 0)
     {
       ldout(s->cct, 0) << "ERROR: failed to get_torrent_file ret= " << op_ret
                        << dendl;
       goto done_err;
     }
-    op_ret = send_response_data(bl, 0, total_len);
+    op_ret = send_response_data(content_data, 0, total_len);
     if (op_ret < 0)
     {
       ldout(s->cct, 0) << "ERROR: failed to send_response_data ret= " << op_ret 
@@ -1788,7 +1808,7 @@ void RGWGetObj::execute()
   }
 
   if (!get_data || ofs > end) {
-    send_response_data(bl, 0, 0);
+    send_response_data(content_data, 0, 0);
     return;
   }
 
@@ -1808,7 +1828,7 @@ void RGWGetObj::execute()
     goto done_err;
   }
 
-  op_ret = send_response_data(bl, 0, 0);
+  op_ret = send_response_data(content_data, 0, 0);
   if (op_ret < 0) {
     goto done_err;
   }
@@ -3377,6 +3397,8 @@ void RGWPutObj::execute()
   int len;
   map<string, string>::iterator iter;
   bool multipart;
+  bufferlist xattr_content_data;
+  int64_t max_xattr = s->cct->_conf->get_val<int64_t>("rgw_small_data_as_xattr_max_size");
   
   off_t fst;
   off_t lst;
@@ -3513,17 +3535,17 @@ void RGWPutObj::execute()
   }
 
   do {
-    bufferlist data;
+    bufferlist content_data;
     if (fst > lst)
       break;
     if (copy_source.empty()) {
-      len = get_data(data);
+      len = get_data(content_data);
     } else {
       uint64_t cur_lst = min(fst + s->cct->_conf->rgw_max_chunk_size - 1, lst);
-      op_ret = get_data(fst, cur_lst, data);
+      op_ret = get_data(fst, cur_lst, content_data);
       if (op_ret < 0)
         goto done;
-      len = data.length();
+      len = content_data.length();
       s->content_length += len;
       fst += len;
     }
@@ -3533,11 +3555,11 @@ void RGWPutObj::execute()
     }
 
     if (need_calc_md5) {
-      hash.Update((const byte *)data.c_str(), data.length());
+      hash.Update((const byte *)content_data.c_str(), content_data.length());
     }
 
     /* update torrrent */
-    torrent.update(data);
+    torrent.update(content_data);
 
     /* do we need this operation to be synchronous? if we're dealing with an object with immutable
      * head, e.g., multipart object we need to make sure we're the first one writing to this object
@@ -3547,10 +3569,15 @@ void RGWPutObj::execute()
     bufferlist orig_data;
 
     if (need_to_wait) {
-      orig_data = data;
+      orig_data = content_data;
     }
 
-    op_ret = put_data_and_throttle(filter, data, ofs, need_to_wait);
+    if (s->content_length <= max_xattr && content_data.length() > 0) {
+      xattr_content_data.append(std::move(content_data));
+      op_ret = 0;
+    } else {
+      op_ret = put_data_and_throttle(filter, content_data, ofs, need_to_wait);
+    }
     if (op_ret < 0) {
       if (op_ret != -EEXIST) {
         ldout(s->cct, 20) << "processor->thottle_data() returned ret="
@@ -3561,7 +3588,7 @@ void RGWPutObj::execute()
       ldout(s->cct, 5) << "NOTICE: processor->throttle_data() returned -EEXIST, need to restart write" << dendl;
 
       /* restore original data */
-      data.swap(orig_data);
+      content_data.swap(orig_data);
 
       /* restart processing with different oid suffix */
 
@@ -3593,9 +3620,12 @@ void RGWPutObj::execute()
           filter = &*compressor;
         }
       }
-      op_ret = put_data_and_throttle(filter, data, ofs, false);
-      if (op_ret < 0) {
-        goto done;
+
+      if (s->content_length <= max_xattr && content_data.length() > 0) {
+        xattr_content_data.append(std::move(content_data));
+        op_ret = 0;
+      } else {
+        op_ret = put_data_and_throttle(filter, content_data, ofs, false);
       }
     }
 
@@ -3609,6 +3639,9 @@ void RGWPutObj::execute()
       goto done;
     }
   }
+
+  // if xattr_content_data is empty - old xattr will be deleted if exists
+  emplace_attr(RGW_ATTR_CONTENT_DATA, std::move(xattr_content_data));
 
   if (!chunked_upload && ofs != s->content_length) {
     op_ret = -ERR_REQUEST_TIMEOUT;
