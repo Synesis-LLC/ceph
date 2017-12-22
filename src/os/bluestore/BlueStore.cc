@@ -4972,7 +4972,7 @@ int BlueStore::_balance_bluefs_freespace(PExtentVector *extents)
 
     AllocExtentVector exts;
     int64_t alloc_len = alloc->allocate(gift, cct->_conf->bluefs_alloc_size,
-					0, 0, &exts);
+					max_alloc_size, 0, &exts);
 
     if (alloc_len <= 0) {
       dout(1) << __func__ << " no allocate on 0x" << std::hex << gift
@@ -10093,7 +10093,7 @@ int BlueStore::_do_alloc_write(
   prealloc.reserve(2 * wctx->writes.size());;
   int prealloc_left = 0;
   prealloc_left = alloc->allocate(
-    need, min_alloc_size, need,
+    need, min_alloc_size, max_alloc_size,
     0, &prealloc);
   assert(prealloc_left == (int64_t)need);
   dout(20) << __func__ << " prealloc " << prealloc << dendl;
