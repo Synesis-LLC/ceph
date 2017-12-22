@@ -3835,8 +3835,8 @@ AWSGeneralAbstractor::get_auth_data_v4(const req_state* const s,
         case RGW_OP_PUT_LC:
           break;
         default:
-          dout(10) << "ERROR: AWS4 completion for this operation NOT IMPLEMENTED" << dendl;
-          throw -ERR_NOT_IMPLEMENTED;
+          dout(1) << "ERROR: AWS4 completion for this operation NOT IMPLEMENTED" << dendl;
+          //throw -ERR_NOT_IMPLEMENTED;
       }
 
       const auto cmpl_factory = std::bind(AWSv4ComplSingle::create,
