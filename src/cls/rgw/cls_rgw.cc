@@ -2046,7 +2046,7 @@ static int rgw_obj_remove(cls_method_context_t hctx, bufferlist *in, bufferlist 
 
   CLS_LOG(20, "%s(): removing object", __func__);
   ret = cls_cxx_remove(hctx);
-  if (ret < 0) {
+  if (ret < 0 && ret != -ENOENT) {
     CLS_LOG(0, "ERROR: %s(): cls_cxx_remove returned %d", __func__, ret);
     return ret;
   }
