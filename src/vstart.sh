@@ -476,6 +476,10 @@ EOF
         rgw override bucket index max shards = 16
         rgw dynamic resharding = false
 
+        rgw_remove_object_always_bypass_gc = true
+        rgw_remove_object_max_concurrent_ios = 32
+        rgw_remove_bucket_always_delete_children = true
+
 [mds]
 $DAEMONOPTS
 $CMDSDEBUG
@@ -515,6 +519,7 @@ $DAEMONOPTS
         filestore wbthrottle btrfs inodes hard limit = 30
         osd copyfrom max chunk = 524288
         bluestore fsck on mount = true
+        bluestore block size = 5368709120
         bluestore block create = true
 	bluestore block db path = $CEPH_DEV_DIR/osd\$id/block.db.file
         bluestore block db size = 67108864
