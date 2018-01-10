@@ -122,6 +122,34 @@ int get_block_device_base(const char *dev, char *out, size_t out_len)
 }
 
 /**
+ * get a block device slaves' names
+ *
+ * return vector of slaves' names
+ */
+std::vector<std::string> get_block_device_slaves(const char *devname)
+{
+  std::vector<std::string> result;
+
+  char dirname[PATH_MAX];
+  snprintf(dirname, sizeof(dirname), "%s/sys/block/%s/slaves", sandbox_dir, devname);
+
+  DIR *dir;
+  dir = opendir(dirname);
+  if (!dir)
+    return result;
+
+  struct dirent *de = nullptr;
+  while ((de = ::readdir(dir))) {
+    if (de->d_name[0] == '.')
+      continue;
+
+    result.emplace_back(de->d_name);
+  }
+
+  return std::move(result);
+}
+
+/**
  * get a block device property as a string
  *
  * store property in *val, up to maxlen chars

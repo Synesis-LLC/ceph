@@ -239,23 +239,42 @@ int KernelDevice::collect_metadata(string prefix, map<string,string> *pm) const
       break;
     default:
       {
-	(*pm)[prefix + "partition_path"] = string(partition_path);
-	(*pm)[prefix + "dev_node"] = string(dev_node);
-	(*pm)[prefix + "model"] = get_dev_property(dev_node, "device/model");
-	(*pm)[prefix + "dev"] = get_dev_property(dev_node, "dev");
+        (*pm)[prefix + "partition_path"] = string(partition_path);
+        (*pm)[prefix + "dev_node"] = string(dev_node);
+        (*pm)[prefix + "dev"] = get_dev_property(dev_node, "dev");
 
-	// nvme exposes a serial number
-	string serial = get_dev_property(dev_node, "device/serial");
-	if (serial.length()) {
-	  (*pm)[prefix + "serial"] = serial;
-	}
+        // nvme exposes a serial number
+        string serial = get_dev_property(dev_node, "device/serial");
+        if (serial.length()) {
+          (*pm)[prefix + "serial"] = serial;
+        }
 
-	// nvme has a device/device/* structure; infer from that.  there
-	// is probably a better way?
-	string nvme_vendor = get_dev_property(dev_node, "device/device/vendor");
-	if (nvme_vendor.length()) {
-	  (*pm)[prefix + "type"] = "nvme";
-	}
+        // lvm device has dm/* structure
+        string dm_name = get_dev_property(dev_node, "dm/name");
+        if (dm_name.length()) {
+          (*pm)[prefix + "dm"] = "1";
+          (*pm)[prefix + "dm_name"] = dm_name;
+        } else {
+          (*pm)[prefix + "dm"] = "0";
+        }
+
+        // if lvm - change dev_node to underlined device name
+        if (dm_name.length()) {
+          auto slaves = get_block_device_slaves(dev_node);
+          if (slaves.size() > 0) {
+            // WARN: use only first slave from list
+            strncpy(dev_node, slaves[0].c_str(), PATH_MAX);
+          }
+        }
+
+        (*pm)[prefix + "model"] = get_dev_property(dev_node, "device/model");
+
+        // nvme has a device/device/* structure; infer from that.  there
+        // is probably a better way?
+        string nvme_vendor = get_dev_property(dev_node, "device/device/vendor");
+        if (nvme_vendor.length()) {
+          (*pm)[prefix + "type"] = "nvme";
+        }
       }
     }
   } else {
