@@ -210,8 +210,9 @@ static string get_dev_property(const char *dev, const char *property)
   return val;
 }
 
-int KernelDevice::collect_metadata(const string& prefix, map<string,string> *pm) const
+int KernelDevice::collect_metadata(const string& _prefix, map<string,string> *pm) const
 {
+  std::string prefix = _prefix;
   (*pm)[prefix + "rotational"] = stringify((int)(bool)rotational);
   (*pm)[prefix + "size"] = stringify(get_size());
   (*pm)[prefix + "block_size"] = stringify(get_block_size());
@@ -243,23 +244,65 @@ int KernelDevice::collect_metadata(const string& prefix, map<string,string> *pm)
       break;
     default:
       {
-	(*pm)[prefix + "partition_path"] = string(partition_path);
-	(*pm)[prefix + "dev_node"] = string(dev_node);
-	(*pm)[prefix + "model"] = get_dev_property(dev_node, "device/model");
-	(*pm)[prefix + "dev"] = get_dev_property(dev_node, "dev");
+        (*pm)[prefix + "partition_path"] = string(partition_path);
+        (*pm)[prefix + "dev_node"] = string(dev_node);
+        (*pm)[prefix + "dev"] = get_dev_property(dev_node, "dev");
 
-	// nvme exposes a serial number
-	string serial = get_dev_property(dev_node, "device/serial");
-	if (serial.length()) {
-	  (*pm)[prefix + "serial"] = serial;
-	}
+        // lvm device has dm/* structure
+        string dm_name = get_dev_property(dev_node, "dm/name");
+        if (dm_name.length()) {
+          (*pm)[prefix + "dm"] = "1";
+          (*pm)[prefix + "dm_name"] = dm_name;
+        } else {
+          (*pm)[prefix + "dm"] = "0";
+        }
 
-	// nvme has a device/device/* structure; infer from that.  there
-	// is probably a better way?
-	string nvme_vendor = get_dev_property(dev_node, "device/device/vendor");
-	if (nvme_vendor.length()) {
-	  (*pm)[prefix + "type"] = "nvme";
-	}
+        // if lvm - change dev_node to underlined device name
+        if (dm_name.length()) {
+          auto slaves = get_block_device_slaves(dev_node);
+          std::stringstream ss;
+          ss << slaves.size();
+          std::string slaves_str = ss.str();
+          (*pm)[prefix + "slaves_count"] = slaves_str;
+          if (slaves.size() > 0) {
+            strncpy(dev_node, slaves[0].c_str(), PATH_MAX);
+            prefix += "physical_disk_";
+            (*pm)[prefix + "dev_node"] = string(dev_node);
+            std::string dev_maj_min = get_dev_property(dev_node, "dev");
+            (*pm)[prefix + "dev"] = dev_maj_min;
+
+            auto udev_props = get_block_device_udev_properties(dev_maj_min);
+            static std::list<std::string> required_props {
+              "ID_MODEL",
+              "ID_SERIAL",
+              "ID_SERIAL_SHORT",
+              "ID_REVISION"
+            };
+            if (udev_props.size() > 0) {
+              for (const auto& prop_name : required_props) {
+                auto p = udev_props.find(prop_name);
+                if (p != udev_props.end()) {
+                  (*pm)[prefix + prop_name] = p->second;
+                }
+              }
+            }
+          }
+        }
+
+        (*pm)[prefix + "model"] = get_dev_property(dev_node, "device/model");
+
+        // nvme exposes a serial number
+        string serial = get_dev_property(dev_node, "device/serial");
+        if (serial.length()) {
+          (*pm)[prefix + "serial"] = serial;
+        }
+
+        // nvme has a device/device/* structure; infer from that.  there
+        // is probably a better way?
+        string nvme_vendor = get_dev_property(dev_node, "device/device/vendor");
+        if (nvme_vendor.length()) {
+          (*pm)[prefix + "type"] = "nvme";
+        }
       }
     }
   } else {

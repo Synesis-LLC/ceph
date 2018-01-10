@@ -15,6 +15,9 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include "include/uuid.h"
+#include <fstream>
+#include <iostream>
+#include <boost/container/string.hpp>
 
 #ifdef __linux__
 #include <linux/fs.h>
@@ -119,6 +122,83 @@ int get_block_device_base(const char *dev, char *out, size_t out_len)
  out:
   closedir(dir);
   return r;
+}
+
+struct closedir_guard
+{
+  DIR *dir;
+  closedir_guard(DIR *dir) : dir(dir) {}
+  virtual ~closedir_guard() { closedir(dir); }
+};
+
+/**
+ * get a block device slaves' names
+ *
+ * return vector of slaves' names
+ */
+std::vector<std::string> get_block_device_slaves(const char *devname)
+{
+  std::vector<std::string> result;
+
+  char dirname[PATH_MAX];
+  snprintf(dirname, sizeof(dirname), "%s/sys/block/%s/slaves", sandbox_dir, devname);
+
+  DIR *dir;
+  dir = opendir(dirname);
+  if (!dir)
+    return result;
+  closedir_guard cdg(dir);
+
+  struct dirent *de = nullptr;
+  while ((de = ::readdir(dir))) {
+    if (de->d_name[0] == '.')
+      continue;
+
+    result.emplace_back(de->d_name);
+  }
+
+  return std::move(result);
+}
+
+/**
+ * get properties of block device from udev
+ *
+ * return map of E elements
+ */
+std::map<std::string, std::string> get_block_device_udev_properties(const std::string& maj_min)
+{
+  std::map<std::string, std::string> result;
+  std::string path = "/run/udev/data/b";
+  path += maj_min;
+
+  std::ifstream f;
+  f.open(path);
+  if (!f.is_open()) {
+    return result;
+  }
+  try {
+    while (!f.eof()) {
+      std::string line;
+      getline(f, line);
+      if (line.size() < 5 || line[0] != 'E' || line[1] != ':') {
+        continue;
+      }
+      size_t eq_pos = line.find('=');
+      if (eq_pos < 2) {
+        continue;
+      }
+      try {
+        std::string key = line.substr(2, eq_pos - 2);
+        std::string val = line.substr(eq_pos + 1);
+        result.emplace(std::move(key), std::move(val));
+      } catch (...) {
+      }
+    }
+  } catch (...) {
+  }
+  f.close();
+
+  return result;
 }
 
 /**
