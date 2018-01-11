@@ -439,7 +439,7 @@ prepare_conf() {
         rgw crypt require ssl = false
         filestore fd cache size = 32
         run dir = $CEPH_OUT_DIR
-        enable experimental unrecoverable data corrupting features = *
+        enable experimental unrecoverable data corrupting features = ""
 EOF
 	if [ "$lockdep" -eq 1 ] ; then
 		wconf <<EOF
@@ -473,7 +473,7 @@ EOF
 [client.rgw]
         rgw lc debug interval = 10
         rgw gc processor period = 10
-        rgw override bucket index max shards = 16
+        rgw override bucket index max shards = 4
         rgw dynamic resharding = false
 
         rgw_remove_object_always_bypass_gc = true
