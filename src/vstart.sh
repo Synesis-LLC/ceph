@@ -471,7 +471,12 @@ EOF
         rgw gc obj min wait = 10
          
 [client.rgw]
+        rgw_lc_max_objs = 3
         rgw lc debug interval = 10
+        rgw_lc_restart_interval = 20
+        rgw_lc_lock_max_wait_ms = 200
+
+        rgw_gc_max_objs = 3
         rgw gc processor period = 10
         rgw override bucket index max shards = 4
         rgw dynamic resharding = false
@@ -1041,7 +1046,7 @@ do_rgw()
     # Start server
     RGWDEBUG=""
     if [ "$debug" -ne 0 ]; then
-        RGWDEBUG="--debug-rgw=0"
+        RGWDEBUG="--debug-rgw=20"
     fi
 
     RGWSUDO=
