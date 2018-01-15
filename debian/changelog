@@ -1,4 +1,4 @@
-ceph (12.2.2-1.7) UNRELEASED; urgency=medium
+ceph (12.2.2-1.8) UNRELEASED; urgency=medium
 
   * Decrease librados command execution timeouts
   * Redirect root requests to base API URL
