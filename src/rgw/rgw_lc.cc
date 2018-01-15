@@ -552,21 +552,27 @@ int RGWLC::bucket_lc_process(string& shard_id)
 int RGWLC::bucket_lc_post(int index, int max_lock_sec, pair<string, int >& entry, int& result)
 {
   utime_t lock_duration(cct->_conf->rgw_lc_lock_max_time, 0);
+  utime_t start_lc_lock;
 
   rados::cls::lock::Lock l(lc_index_lock_name);
   l.set_cookie(cookie);
   l.set_duration(lock_duration);
 
+  int lc_lock_max_wait_ms = static_cast<int>(cct->_conf->get_val<int64_t>("rgw_lc_lock_max_wait_ms"));
+
   do {
     int ret = l.lock_exclusive(&store->lc_pool_ctx, obj_names[index]);
     if (ret == -EBUSY) { /* already locked by another lc processor */
-      dout(2) << "RGWLC::bucket_lc_post() failed to acquire lock on, sleep 5, try again" << obj_names[index] << dendl;
-      sleep(5);
+      dout(2) << "RGWLC::bucket_lc_post() failed to acquire lock on, sleep and try again " << obj_names[index] << dendl;
+      usleep(static_cast<int32_t>(get_random(lc_lock_max_wait_ms*500, lc_lock_max_wait_ms*1000)));
       continue;
     }
     if (ret < 0)
       return 0;
-    dout(20) << "RGWLC::bucket_lc_post()  get lock" << obj_names[index] << dendl;
+
+    start_lc_lock = ceph_clock_now();
+    dout(20) << "RGWLC::bucket_lc_post() get lock " << obj_names[index] << dendl;
+
     if (result ==  -ENOENT) {
       ret = cls_rgw_lc_rm_entry(store->lc_pool_ctx, obj_names[index],  entry);
       if (ret < 0) {
@@ -581,11 +587,14 @@ int RGWLC::bucket_lc_post(int index, int max_lock_sec, pair<string, int >& entry
 
     ret = cls_rgw_lc_set_entry(store->lc_pool_ctx, obj_names[index],  entry);
     if (ret < 0) {
-      dout(0) << "RGWLC::process() failed to set entry " << obj_names[index] << dendl;
+      dout(0) << "RGWLC::bucket_lc_post() failed to set entry " << obj_names[index] << dendl;
     }
 clean:
     l.unlock(&store->lc_pool_ctx, obj_names[index]);
-    dout(20) << "RGWLC::bucket_lc_post()  unlock" << obj_names[index] << dendl;
+    utime_t end_lc_lock = ceph_clock_now();
+    utime_t elapsed = end_lc_lock - start_lc_lock;
+    dout(20) << "RGWLC::bucket_lc_post() unlock " << obj_names[index] << " was locked " << elapsed.to_msec() << "ms" << dendl;
+
     return 0;
   } while (true);
 }
@@ -636,6 +645,9 @@ int RGWLC::process()
 int RGWLC::process(int index, int max_lock_secs)
 {
   rados::cls::lock::Lock l(lc_index_lock_name);
+  utime_t start_lc_lock;
+  int lc_lock_max_wait_ms = static_cast<int>(cct->_conf->get_val<int64_t>("rgw_lc_lock_max_wait_ms"));
+
   do {
     utime_t now = ceph_clock_now();
     pair<string, int > entry;//string = bucket_name:bucket_id ,int = LC_BUCKET_STATUS
@@ -647,12 +659,17 @@ int RGWLC::process(int index, int max_lock_secs)
 
     int ret = l.lock_exclusive(&store->lc_pool_ctx, obj_names[index]);
     if (ret == -EBUSY) { /* already locked by another lc processor */
-      dout(2) << "RGWLC::process() failed to acquire lock on, sleep 5, try again" << obj_names[index] << dendl;
-      sleep(5);
+      dout(2) << "RGWLC::process() failed to acquire lock on, sleep and try again " << obj_names[index] << dendl;
+      usleep(static_cast<int32_t>(get_random(lc_lock_max_wait_ms*500, lc_lock_max_wait_ms*1000)));
       continue;
     }
-    if (ret < 0)
+    if (ret < 0) {
+      dout(20) << "RGWLC::process() lock_exclusive " << obj_names[index] << " err: " << ret << dendl;
       return 0;
+    }
+
+    dout(20) << "RGWLC::process() get lock " << obj_names[index] << dendl;
+    start_lc_lock = ceph_clock_now();
 
     string marker;
     cls_rgw_lc_obj_head head;
@@ -689,6 +706,12 @@ int RGWLC::process(int index, int max_lock_secs)
           dout(0) << "RGWLC::process() failed to put head " << obj_names[index] << dendl;
           goto exit;
         }
+
+        // unlock before re-enter loop, lock is not recursive
+        l.unlock(&store->lc_pool_ctx, obj_names[index]);
+        utime_t end_lc_lock = ceph_clock_now();
+        utime_t elapsed = end_lc_lock - start_lc_lock;
+        dout(20) << "RGWLC::process()  unlock " << obj_names[index] << " was locked " << elapsed.to_msec() << "ms" << dendl;
         continue;
       }
       goto exit;
@@ -707,13 +730,24 @@ int RGWLC::process(int index, int max_lock_secs)
       dout(0) << "RGWLC::process() failed to put head " << obj_names[index] << dendl;
       goto exit;
     }
+
     l.unlock(&store->lc_pool_ctx, obj_names[index]);
+    utime_t end_lc_lock = ceph_clock_now();
+    utime_t elapsed = end_lc_lock - start_lc_lock;
+    dout(20) << "RGWLC::process()  unlock " << obj_names[index] << " was locked " << elapsed.to_msec() << "ms" << dendl;
+
     ret = bucket_lc_process(entry.first);
+
     bucket_lc_post(index, max_lock_secs, entry, ret);
   }while(1);
 
 exit:
+
     l.unlock(&store->lc_pool_ctx, obj_names[index]);
+    utime_t end_lc_lock = ceph_clock_now();
+    utime_t elapsed = end_lc_lock - start_lc_lock;
+    dout(20) << "RGWLC::process()  unlock " << obj_names[index] << " was locked " << elapsed.to_msec() << "ms" << dendl;
+
     return 0;
 }
 
@@ -771,11 +805,17 @@ bool RGWLC::LCWorker::should_work(utime_t& now)
 
 int RGWLC::LCWorker::schedule_next_start_time(utime_t &start, utime_t& now)
 {
-  if (cct->_conf->rgw_lc_debug_interval > 0) {
-	int secs = start + cct->_conf->rgw_lc_debug_interval - now;
-	if (secs < 0)
-	  secs = 0;
-	return (secs);
+  int restart_interval = static_cast<int>(cct->_conf->get_val<int64_t>("rgw_lc_restart_interval"));
+  if (restart_interval > 0) {
+    int secs = start + restart_interval - now;
+    if (secs < 0) {
+      secs = 0;
+    } else if (secs > restart_interval/2) {
+      secs += get_random(0, restart_interval/2);
+    }
+    return secs;
+  } else if (restart_interval == 0) {
+    return 0;
   }
 
   int start_hour;

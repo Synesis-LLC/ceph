@@ -44,6 +44,7 @@
 #include "rgw_tag_s3.h"
 #include "cls/lock/cls_lock_client.h"
 #include "cls/rgw/cls_rgw_client.h"
+#include "auth/Crypto.h"
 
 
 #include "include/assert.h"
@@ -2905,8 +2906,8 @@ struct RGWDeleteBucketLogGuard
     name(bucket_name),
     enabled(store->ctx()->_conf->rgw_trace_deletes),
     succeeded(false),
-    ctx(store->ctx()),
-    enoent(false)
+    enoent(false),
+    ctx(store->ctx())
   {}
   virtual ~RGWDeleteBucketLogGuard()
   {
@@ -5079,20 +5080,21 @@ void RGWPutLC::execute()
   l.set_duration(time);
   l.set_cookie(cookie);
   librados::IoCtx *ctx = store->get_lc_pool_ctx();
+  int lc_lock_max_wait_ms = static_cast<int>(s->cct->_conf->get_val<int64_t>("rgw_lc_lock_max_wait_ms"));
   do {
     op_ret = l.lock_exclusive(ctx, oid);
     if (op_ret == -EBUSY) {
-      dout(2) << "RGWLC::RGWPutLC() failed to acquire lock on, sleep 5, try again" << oid << dendl;
-      sleep(5);
+      dout(2) << "RGWPutLC::execute() failed to acquire lock on, sleep and try again " << oid << dendl;
+      usleep(static_cast<int32_t>(get_random(lc_lock_max_wait_ms*500, lc_lock_max_wait_ms*1000)));
       continue;
     }
     if (op_ret < 0) {
-      dout(0) << "RGWLC::RGWPutLC() failed to acquire lock " << oid << op_ret << dendl;
+      dout(0) << "RGWPutLC::execute() failed to acquire lock " << oid << op_ret << dendl;
       break;
     }
     op_ret = cls_rgw_lc_set_entry(*ctx, oid, entry);
     if (op_ret < 0) {
-      dout(0) << "RGWLC::RGWPutLC() failed to set entry " << oid << op_ret << dendl;     
+      dout(0) << "RGWPutLC::execute() failed to set entry " << oid << op_ret << dendl;     
     }
     break;
   }while(1);
@@ -5131,20 +5133,21 @@ void RGWDeleteLC::execute()
   rados::cls::lock::Lock l(lc_index_lock_name);
   utime_t time(max_lock_secs, 0);
   l.set_duration(time);
+  int lc_lock_max_wait_ms = static_cast<int>(s->cct->_conf->get_val<int64_t>("rgw_lc_lock_max_wait_ms"));
   do {
     op_ret = l.lock_exclusive(ctx, oid);
     if (op_ret == -EBUSY) {
-      dout(2) << "RGWLC::RGWDeleteLC() failed to acquire lock on, sleep 5, try again" << oid << dendl;
-      sleep(5);
+      dout(2) << "RGWDeleteLC::execute() failed to acquire lock on, sleep and try again " << oid << dendl;
+      usleep(static_cast<int32_t>(get_random(lc_lock_max_wait_ms*500, lc_lock_max_wait_ms*1000)));
       continue;
     }
     if (op_ret < 0) {
-      dout(0) << "RGWLC::RGWDeleteLC() failed to acquire lock " << oid << op_ret << dendl;
+      dout(0) << "RGWDeleteLC::execute() failed to acquire lock " << oid << op_ret << dendl;
       break;
     }
     op_ret = cls_rgw_lc_rm_entry(*ctx, oid, entry);
     if (op_ret < 0) {
-      dout(0) << "RGWLC::RGWDeleteLC() failed to set entry " << oid << op_ret << dendl;
+      dout(0) << "RGWDeleteLC::execute() failed to set entry " << oid << op_ret << dendl;
     }
     break;
   }while(1);
