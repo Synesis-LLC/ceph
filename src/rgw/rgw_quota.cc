@@ -664,7 +664,7 @@ int RGWUserStatsCache::sync_user(const rgw_user& user)
   // check if enough time passed since last full sync
   /* FIXME: missing check? */
 
-  ret = rgw_user_sync_all_stats(store, user);
+  ret = rgw_user_sync_all_stats(store, user, true);
   if (ret < 0) {
     ldout(store->ctx(), 0) << "ERROR: failed user stats sync, ret=" << ret << dendl;
     return ret;

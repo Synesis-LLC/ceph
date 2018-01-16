@@ -1964,7 +1964,7 @@ void RGWGetUsage::execute()
     }    
   }
 
-  op_ret = rgw_user_sync_all_stats(store, s->user->user_id);
+  op_ret = rgw_user_sync_all_stats(store, s->user->user_id, false);
   if (op_ret < 0) {
     ldout(store->ctx(), 0) << "ERROR: failed to sync user stats: " << dendl;
     return;

@@ -11,6 +11,8 @@
 CLS_VER(1,0)
 CLS_NAME(user)
 
+#define MAX_ENTRIES 1000
+
 static int write_entry(cls_method_context_t hctx, const string& key, const cls_user_bucket_entry& entry)
 {
   bufferlist bl;
@@ -188,6 +190,94 @@ static int cls_user_set_buckets_info(cls_method_context_t hctx, bufferlist *in, 
   return 0;
 }
 
+static int cls_user_do_recalc_stats(cls_method_context_t hctx, cls_user_header &header)
+{
+  header.stats.total_bytes = 0;
+  header.stats.total_bytes_rounded = 0;
+  header.stats.total_entries = 0;
+
+  string from_index;
+  string match_prefix;
+  bool truncated = false;
+
+  do {
+    map<string, bufferlist> keys;
+    truncated = false;
+
+    int rc = cls_cxx_map_get_vals(hctx, from_index, match_prefix, MAX_ENTRIES, &keys, &truncated);
+    if (rc < 0)
+      return rc;
+
+    CLS_LOG(20, "from_index=%s match_prefix=%s",
+            from_index.c_str(),
+            match_prefix.c_str());
+
+    map<string, bufferlist>::iterator iter = keys.begin();
+
+    string marker;
+
+    for (; iter != keys.end(); ++iter) {
+      marker = iter->first;
+
+      bufferlist& bl = iter->second;
+      bufferlist::iterator biter = bl.begin();
+      cls_user_bucket_entry e;
+      try {
+        ::decode(e, biter);
+      } catch (buffer::error& err) {
+        CLS_LOG(0, "ERROR: cls_user_list: could not decode entry, index=%s", marker.c_str());
+        continue;
+      }
+
+      if (e.user_stats_sync) {
+        add_header_stats(&header.stats, e);
+      }
+    }
+
+    if (truncated) {
+      from_index = marker;
+    }
+  } while (truncated);
+
+  return 0;
+}
+
+static int cls_user_reset_stats_sync(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
+{
+  bufferlist::iterator in_iter = in->begin();
+
+  cls_user_reset_stats_op op;
+  try {
+    ::decode(op, in_iter);
+  } catch (buffer::error& err) {
+    CLS_LOG(1, "ERROR: cls_user_reset_stats_op(): failed to decode op");
+    return -EINVAL;
+  }
+
+  cls_user_header header;
+  int ret = read_header(hctx, &header);
+  if (ret < 0) {
+    CLS_LOG(0, "ERROR: failed to read user info header ret=%d", ret);
+    return ret;
+  }
+
+  ret = cls_user_do_recalc_stats(hctx, header);
+  if (ret < 0) {
+    CLS_LOG(0, "ERROR: failed to recalc stats ret=%d", ret);
+    return ret;
+  }
+
+  bufferlist bl;
+  ::encode(header, bl);
+  ret = cls_cxx_map_write_header(hctx, &bl);
+  if (ret < 0) {
+    CLS_LOG(0, "ERROR: failed to write user info header ret=%d", ret);
+    return ret;
+  }
+
+  return 0;
+}
+
 static int cls_user_complete_stats_sync(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
 {
   bufferlist::iterator in_iter = in->begin();
@@ -285,7 +375,6 @@ static int cls_user_list_buckets(cls_method_context_t hctx, bufferlist *in, buff
   const string& to_index = op.end_marker;
   const bool to_index_valid = !to_index.empty();
 
-#define MAX_ENTRIES 1000
   size_t max_entries = op.max_entries;
   if (max_entries > MAX_ENTRIES)
     max_entries = MAX_ENTRIES;
@@ -369,6 +458,7 @@ CLS_INIT(user)
   cls_method_handle_t h_user_remove_bucket;
   cls_method_handle_t h_user_list_buckets;
   cls_method_handle_t h_user_get_header;
+  cls_method_handle_t h_user_reset_stats;
 
   cls_register("user", &h_class);
 
@@ -380,6 +470,7 @@ CLS_INIT(user)
   cls_register_cxx_method(h_class, "remove_bucket", CLS_METHOD_RD | CLS_METHOD_WR, cls_user_remove_bucket, &h_user_remove_bucket);
   cls_register_cxx_method(h_class, "list_buckets", CLS_METHOD_RD, cls_user_list_buckets, &h_user_list_buckets);
   cls_register_cxx_method(h_class, "get_header", CLS_METHOD_RD, cls_user_get_header, &h_user_get_header);
+  cls_register_cxx_method(h_class, "reset_stats", CLS_METHOD_RD | CLS_METHOD_WR, cls_user_reset_stats_sync, &h_user_reset_stats);
 
   return;
 }

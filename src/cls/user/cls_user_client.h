@@ -37,4 +37,6 @@ void cls_user_bucket_list(librados::ObjectReadOperation& op,
 void cls_user_get_header(librados::ObjectReadOperation& op, cls_user_header *header, int *pret);
 int cls_user_get_header_async(librados::IoCtx& io_ctx, string& oid, RGWGetUserHeader_CB *ctx);
 
+void cls_user_reset_stats(librados::ObjectWriteOperation& op, int *ret);
+
 #endif

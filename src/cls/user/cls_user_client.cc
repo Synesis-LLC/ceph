@@ -132,6 +132,28 @@ void cls_user_get_header(librados::ObjectReadOperation& op,
   op.exec("user", "get_header", inbl, new ClsUserGetHeaderCtx(header, NULL, pret));
 }
 
+class ClsUserResetStatsCtx : public ObjectOperationCompletion {
+  int *pret;
+public:
+  ClsUserResetStatsCtx(int *_pret) :
+      pret(_pret) {}
+  void handle_completion(int r, bufferlist& outbl) override {
+    if (pret) {
+      *pret = r;
+    }
+  }
+};
+
+void cls_user_reset_stats(librados::ObjectWriteOperation& op, int *pret)
+{
+  bufferlist inbl;
+  cls_user_reset_stats_op call;
+
+  ::encode(call, inbl);
+
+  op.exec("user", "reset_stats", inbl, new ClsUserResetStatsCtx(pret));
+}
+
 int cls_user_get_header_async(IoCtx& io_ctx, string& oid, RGWGetUserHeader_CB *ctx)
 {
   bufferlist in, out;

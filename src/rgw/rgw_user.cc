@@ -42,7 +42,7 @@ void rgw_get_anon_user(RGWUserInfo& info)
   info.access_keys.clear();
 }
 
-int rgw_user_sync_all_stats(RGWRados *store, const rgw_user& user_id)
+int rgw_user_sync_all_stats(RGWRados *store, const rgw_user& user_id, bool recalculate_stats)
 {
   CephContext *cct = store->ctx();
   size_t max_entries = cct->_conf->rgw_list_buckets_max_chunk;
@@ -85,6 +85,14 @@ int rgw_user_sync_all_stats(RGWRados *store, const rgw_user& user_id)
       }
     }
   } while (is_truncated);
+
+  if (recalculate_stats) {
+    ret = store->user_reset_stats_sync(user_id);
+    if (ret < 0) {
+      cerr << "ERROR: failed to reset user stats: ret=" << ret << std::endl;
+      return ret;
+    }
+  }
 
   ret = store->complete_sync_user_stats(user_id);
   if (ret < 0) {
@@ -2366,7 +2374,7 @@ int RGWUserAdminOp_User::info(RGWRados *store, RGWUserAdminOpState& op_state,
     return ret;
 
   if (op_state.sync_stats) {
-    ret = rgw_user_sync_all_stats(store, info.user_id);
+    ret = rgw_user_sync_all_stats(store, info.user_id, true);
     if (ret < 0) {
       return ret;
     }

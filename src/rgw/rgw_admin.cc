@@ -6054,7 +6054,7 @@ next:
           return -ret;
         }
       } else {
-        int ret = rgw_user_sync_all_stats(store, user_id);
+        int ret = rgw_user_sync_all_stats(store, user_id, true);
         if (ret < 0) {
           cerr << "ERROR: failed to sync user stats: " << cpp_strerror(-ret) << std::endl;
           return -ret;

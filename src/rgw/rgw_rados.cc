@@ -13318,6 +13318,32 @@ int RGWRados::cls_user_complete_stats_sync(rgw_raw_obj& obj)
   return 0;
 }
 
+int RGWRados::user_reset_stats_sync(const rgw_user& user_id)
+{
+  string buckets_obj_id;
+  rgw_get_buckets_obj(user_id, buckets_obj_id);
+  rgw_raw_obj obj(get_zone_params().user_uid_pool, buckets_obj_id);
+  return cls_user_reset_stats_sync(obj);
+}
+
+int RGWRados::cls_user_reset_stats_sync(rgw_raw_obj& obj)
+{
+  rgw_rados_ref ref;
+  int r = get_raw_obj_ref(obj, &ref);
+  if (r < 0) {
+    return r;
+  }
+
+  librados::ObjectWriteOperation op;
+  int ret;
+  ::cls_user_reset_stats(op, &ret);
+  r = ref.ioctx.operate(ref.oid, &op);
+  if (r < 0)
+    return r;
+
+  return 0;
+}
+
 int RGWRados::cls_user_add_bucket(rgw_raw_obj& obj, const cls_user_bucket_entry& entry)
 {
   list<cls_user_bucket_entry> l;
