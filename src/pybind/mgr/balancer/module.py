@@ -11,11 +11,12 @@ import random
 import time
 from mgr_module import MgrModule, CommandResult
 from threading import Event
+from pprint import pformat
 
 # available modes: 'none', 'crush', 'crush-compat', 'upmap', 'osd_weight'
-default_mode = 'none'
-default_sleep_interval = 60   # seconds
-default_max_misplaced = .05    # max ratio of pgs replaced at a time
+DEFAULT_MODE = 'none'
+DEFAULT_SLEEP_INTERVAL = 60   # seconds
+DEFAULT_MAX_MISPLACED = .05    # max ratio of pgs replaced at a time
 
 TIME_FORMAT = '%Y-%m-%d_%H:%M:%S'
 
@@ -251,11 +252,32 @@ class Module(MgrModule):
             "desc": "Execute an optimization plan",
             "perm": "r",
         },
+        {
+            "cmd": "balancer init-cfg",
+            "desc": "Initialize config-key options",
+            "perm": "rw",
+        },
     ]
     active = False
     run = True
     plans = {}
     mode = ''
+
+    config_options = {
+        'mode' : (str, DEFAULT_MODE),
+        'sleep_interval' : (int, DEFAULT_SLEEP_INTERVAL),
+        'max_misplaced' : (float, DEFAULT_MAX_MISPLACED),
+        'begin_time' : (str, '0000'),
+        'end_time' : (str, '2400'),
+        'upmap_max_iterations' : (int, 10),
+        'upmap_max_deviation' : (float, .01),
+        'crush_compat_max_iterations' : (int, 25),
+        'crush_compat_step' : (float, .5),
+        'active' : (bool, ''),
+    }
+
+    def get_cfg(self, key):
+        return self.config_options[key][0](self.get_config(key, self.config_options[key][1]))
 
     def __init__(self, *args, **kwargs):
         super(Module, self).__init__(*args, **kwargs)
@@ -267,7 +289,7 @@ class Module(MgrModule):
             s = {
                 'plans': self.plans.keys(),
                 'active': self.active,
-                'mode': self.get_config('mode', default_mode),
+                'mode': self.get_cfg('mode'),
             }
             return (0, json.dumps(s, indent=4), '')
         elif command['prefix'] == 'balancer mode':
@@ -325,6 +347,14 @@ class Module(MgrModule):
             self.execute(plan)
             self.plan_rm(plan)
             return (0, '', '')
+        elif command['prefix'] == 'balancer init-cfg':
+            self.log.info('Initializing config options')
+            for key,value in self.config_options.items():
+                if not self.get_config(key, False):
+                    self.set_config(key, str(value[1]))
+            for key in self.config_options:
+                self.log.info('%s : %s' % (key, pformat(self.get_cfg(key))))
+            return (0, '', '')
         else:
             return (-errno.EINVAL, '',
                     "Command not found '{0}'".format(command['prefix']))
@@ -343,15 +373,14 @@ class Module(MgrModule):
     def serve(self):
         self.log.info('Starting')
         while self.run:
-            self.active = self.get_config('active', '') is not ''
-            begin_time = self.get_config('begin_time') or '0000'
-            end_time = self.get_config('end_time') or '2400'
+            self.active = self.get_cfg('active')
+            begin_time = self.get_cfg('begin_time')
+            end_time = self.get_cfg('end_time')
             timeofday = time.strftime('%H%M', time.localtime())
             self.log.debug('Waking up [%s, scheduled for %s-%s, now %s]',
                            "active" if self.active else "inactive",
                            begin_time, end_time, timeofday)
-            sleep_interval = float(self.get_config('sleep_interval',
-                                                   default_sleep_interval))
+            sleep_interval = float(self.get_cfg('sleep_interval'))
             if self.active and self.time_in_interval(timeofday, begin_time, end_time):
                 self.log.debug('Running')
                 name = 'auto_%s' % time.strftime(TIME_FORMAT, time.gmtime())
@@ -567,9 +596,8 @@ class Module(MgrModule):
 
     def optimize(self, plan):
         self.log.info('Optimize plan %s' % plan.name)
-        plan.mode = self.get_config('mode', default_mode)
-        max_misplaced = float(self.get_config('max_misplaced',
-                                              default_max_misplaced))
+        plan.mode = self.get_cfg('mode')
+        max_misplaced = float(self.get_cfg('max_misplaced'))
         self.log.info('Mode %s, max misplaced %f' %
                       (plan.mode, max_misplaced))
 
@@ -604,8 +632,8 @@ class Module(MgrModule):
 
     def do_upmap(self, plan):
         self.log.info('do_upmap')
-        max_iterations = self.get_config('upmap_max_iterations', 10)
-        max_deviation = self.get_config('upmap_max_deviation', .01)
+        max_iterations = self.get_cfg('upmap_max_iterations')
+        max_deviation = self.get_cfg('upmap_max_deviation')
 
         ms = plan.initial
         pools = [str(i['pool_name']) for i in ms.osdmap_dump.get('pools',[])]
@@ -630,14 +658,13 @@ class Module(MgrModule):
 
     def do_crush_compat(self, plan):
         self.log.info('do_crush_compat')
-        max_iterations = self.get_config('crush_compat_max_iterations', 25)
+        max_iterations = self.get_cfg('crush_compat_max_iterations')
         if max_iterations < 1:
             return False
-        step = self.get_config('crush_compat_step', .5)
+        step = self.get_cfg('crush_compat_step')
         if step <= 0 or step >= 1.0:
             return False
-        max_misplaced = float(self.get_config('max_misplaced',
-                                              default_max_misplaced))
+        max_misplaced = float(self.get_cfg('max_misplaced'))
         min_pg_per_osd = 2
 
         ms = plan.initial
