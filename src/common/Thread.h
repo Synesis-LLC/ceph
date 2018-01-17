@@ -18,6 +18,7 @@
 
 #include <pthread.h>
 #include <sys/types.h>
+#include <string>
 
 class Thread {
  private:
@@ -25,7 +26,7 @@ class Thread {
   pid_t pid;
   int ioprio_class, ioprio_priority;
   int cpuid;
-  const char *thread_name;
+  std::string thread_name;
 
   void *entry_wrapper();
 

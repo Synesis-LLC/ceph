@@ -46,8 +46,7 @@ Thread::Thread()
     pid(0),
     ioprio_class(-1),
     ioprio_priority(-1),
-    cpuid(-1),
-    thread_name(NULL)
+    cpuid(-1)
 {
 }
 
@@ -75,7 +74,7 @@ void *Thread::entry_wrapper()
   if (pid && cpuid >= 0)
     _set_affinity(cpuid);
 
-  ceph_pthread_setname(pthread_self(), thread_name);
+  ceph_pthread_setname(pthread_self(), thread_name.c_str());
   return entry();
 }
 
@@ -140,8 +139,7 @@ int Thread::try_create(size_t stacksize)
 
 void Thread::create(const char *name, size_t stacksize)
 {
-  assert(strlen(name) < 16);
-  thread_name = name;
+  thread_name = std::string(name).substr(0, 15);
 
   int ret = try_create(stacksize);
   if (ret != 0) {
