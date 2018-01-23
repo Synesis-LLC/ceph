@@ -4469,6 +4469,10 @@ std::vector<Option> get_rgw_options() {
         "some of the maintenance work between them.")
     .add_see_also({"rgw_enable_gc_threads", "rgw_enable_quota_threads"}),
 
+    Option("rgw_lc_threads_count", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    .set_default(1)
+    .set_description(""),
+
     Option("rgw_data", Option::TYPE_STR, Option::LEVEL_ADVANCED)
     .set_default("/var/lib/ceph/radosgw/$cluster-$id")
     .set_description("Alternative location for RGW configuration.")
