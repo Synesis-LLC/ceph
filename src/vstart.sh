@@ -471,6 +471,7 @@ EOF
         rgw gc obj min wait = 10
          
 [client.rgw]
+        rgw_lc_threads_count = 3
         rgw_lc_max_objs = 3
         rgw lc debug interval = 10
         rgw_lc_restart_interval = 20

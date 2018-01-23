@@ -344,8 +344,8 @@ class RGWLC {
   };
   
   public:
-  LCWorker *worker;
-  RGWLC() : cct(NULL), store(NULL), worker(NULL) {}
+  std::vector<std::shared_ptr<LCWorker>> workers;
+  RGWLC() : cct(NULL), store(NULL) {}
   ~RGWLC() {
     stop_processor();
     finalize();

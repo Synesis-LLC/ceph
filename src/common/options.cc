@@ -4295,6 +4295,10 @@ std::vector<Option> get_rgw_options() {
     Option("rgw_enable_lc_threads", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(true)
     .set_description(""),
+    
+    Option("rgw_lc_threads_count", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    .set_default(1)
+    .set_description(""),
 
     Option("rgw_data", Option::TYPE_STR, Option::LEVEL_ADVANCED)
     .set_default("/var/lib/ceph/radosgw/$cluster-$id")

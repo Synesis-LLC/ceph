@@ -329,8 +329,10 @@ int RGWLC::bucket_lc_process(string& shard_id)
   string bucket_tenant = result[0];
   string bucket_name = result[1];
   string bucket_id = result[2];
-
-  dout(20) << "RGWLC::bucket_lc_process(\"" << shard_id << "\")" << dendl;
+  pthread_t thread_id;
+  
+  thread_id = pthread_self();
+  dout(20) << "RGWLC::bucket_lc_process: " << thread_id << " shard_id: " << shard_id << dendl;
 
   int ret = store->get_bucket_info(obj_ctx, bucket_tenant, bucket_name, bucket_info, NULL, &bucket_attrs);
   if (ret < 0) {
@@ -376,6 +378,7 @@ int RGWLC::bucket_lc_process(string& shard_id)
         objs.clear();
         list_op.params.marker = list_op.get_next_marker();
         ret = list_op.list_objects(1000, &objs, NULL, &is_truncated);
+        dout(20) << "RGWLC::bucket_lc_process:" << thread_id << " list_objects: " << objs.size() << " is_truncated: " << is_truncated << dendl;
 
         if (ret < 0) {
           if (ret == (-ENOENT))
@@ -386,6 +389,7 @@ int RGWLC::bucket_lc_process(string& shard_id)
 
         utime_t now = ceph_clock_now();
         bool is_expired;
+        int expired_cnt = 0;
         for (auto obj_iter = objs.begin(); obj_iter != objs.end(); ++obj_iter) {
           rgw_obj_key key(obj_iter->key);
 
@@ -399,6 +403,7 @@ int RGWLC::bucket_lc_process(string& shard_id)
             is_expired = obj_has_expired(now - ceph::real_clock::to_time_t(obj_iter->meta.mtime), prefix_iter->second.expiration);
           }
           if (is_expired) {
+            expired_cnt += 1;
             RGWObjectCtx rctx(store);
             rgw_obj obj(bucket_info.bucket, key);
             RGWObjState *state;
@@ -421,7 +426,9 @@ int RGWLC::bucket_lc_process(string& shard_id)
             }
           }
         }
+        dout(20) << "RGWLC::bucket_lc_process:" << thread_id << " expired_cnt: " << expired_cnt << " process time: " << ceph_clock_now() - now << dendl;
       } while (is_truncated);
+      dout(20) << "RGWLC::bucket_lc_process:" << thread_id << " done" << dendl;      
     }
   } else {
   //bucket versioning is enabled or suspended
@@ -742,19 +749,22 @@ exit:
 
 void RGWLC::start_processor()
 {
-  worker = new LCWorker(cct, this);
-  worker->create("lifecycle_thr");
+  int rgw_lc_threads_count = static_cast<int>(cct->_conf->get_val<int64_t>("rgw_lc_threads_count"));  
+  for (int i = 0; i < rgw_lc_threads_count; ++i) {
+    std::shared_ptr<LCWorker> worker = std::make_shared<LCWorker>(cct, this);
+    worker->create("lifecycle_thr");
+    workers.push_back(worker);
+  }
 }
 
 void RGWLC::stop_processor()
 {
   down_flag = true;
-  if (worker) {
+  for (std::shared_ptr<LCWorker> worker : workers) {
     worker->stop();
     worker->join();
   }
-  delete worker;
-  worker = NULL;
+  workers.clear();
 }
 
 void RGWLC::LCWorker::stop()
