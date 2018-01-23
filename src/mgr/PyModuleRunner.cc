@@ -92,6 +92,7 @@ void* PyModuleRunner::PyModuleRunnerThread::entry()
 {
   // No need to acquire the GIL here; the module does it.
   dout(4) << "Entering thread for " << mod->get_name() << dendl;
-  mod->serve();
+  int r = mod->serve();
+  dout(0) << "module " << mod->get_name() << " serve() return " << r << dendl;
   return nullptr;
 }

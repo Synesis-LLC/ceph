@@ -348,16 +348,19 @@ class Module(MgrModule):
             self.plan_rm(plan)
             return (0, '', '')
         elif command['prefix'] == 'balancer init-cfg':
-            self.log.info('Initializing config options')
-            for key,value in self.config_options.items():
-                if not self.get_config(key, False):
-                    self.set_config(key, str(value[1]))
-            for key in self.config_options:
-                self.log.info('%s : %s' % (key, pformat(self.get_cfg(key))))
+            self.init_cfg()
             return (0, '', '')
         else:
             return (-errno.EINVAL, '',
                     "Command not found '{0}'".format(command['prefix']))
+
+    def init_cfg(self):
+        self.log.info('Initializing config options')
+        for key,value in self.config_options.items():
+            if not self.get_config(key, False):
+                self.set_config(key, str(value[1]))
+        for key in self.config_options:
+            self.log.info('%s : %s' % (key, pformat(self.get_cfg(key))))
 
     def shutdown(self):
         self.log.info('Stopping')
