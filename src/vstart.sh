@@ -471,7 +471,10 @@ EOF
         rgw gc obj min wait = 10
          
 [client.rgw]
+        rgw_auto_create_pools = true
+
         rgw_lc_threads_count = 3
+
         rgw_lc_max_objs = 3
         rgw lc debug interval = 10
         rgw_lc_restart_interval = 20
@@ -994,7 +997,7 @@ do_rgw_create_users()
     local akey='0555b35654ad1656d804'
     local skey='h7GhxuBLTrlhVUyxSPUKUV8r/2EI4ngqJxD7iBdBYLhwluN30JaT3Q=='
     echo "setting up user testid"
-    $CEPH_BIN/radosgw-admin user create --uid testid --access-key $akey --secret $skey --display-name 'M. Tester' --email tester@ceph.com -c $conf_fn > /dev/null
+    $CEPH_BIN/radosgw-admin --rgw_auto_create_pools=true user create --uid testid --access-key $akey --secret $skey --display-name 'M. Tester' --email tester@ceph.com -c $conf_fn > /dev/null
 
     # Create S3-test users
     # See: https://github.com/ceph/s3-tests

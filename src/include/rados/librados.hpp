@@ -1301,6 +1301,7 @@ namespace librados
 	      uint64_t flags);
     int init_with_context(config_t cct_);
     config_t cct();
+    CephContext* ctx();
     int connect();
     void shutdown();
     int watch_flush();

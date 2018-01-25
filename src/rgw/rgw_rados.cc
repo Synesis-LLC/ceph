@@ -170,6 +170,12 @@ int rgw_init_ioctx(librados::Rados *rados, const rgw_pool& pool, IoCtx& ioctx, b
 {
   int r = rados->ioctx_create(pool.name.c_str(), ioctx);
   if (r == -ENOENT && create) {
+    bool rgw_auto_create_pools = rados->ctx()->_conf->get_val<bool>("rgw_auto_create_pools");
+    if (!rgw_auto_create_pools) {
+      ldout(rados->ctx(), 0) << " ERROR: " << __func__ << " automatic pool creation not allowed" << dendl;
+      return -ENOENT;
+    }
+
     r = rados->pool_create(pool.name.c_str());
     if (r < 0 && r != -EEXIST) {
       return r;
@@ -4822,6 +4828,12 @@ int RGWRados::open_pool_ctx(const rgw_pool& pool, librados::IoCtx&  io_ctx)
   if (!pools_initialized)
     return r;
 
+  bool rgw_auto_create_pools = cct->_conf->get_val<bool>("rgw_auto_create_pools");
+  if (!rgw_auto_create_pools) {
+    ldout(cct, 0) << " ERROR: " << __func__ << " automatic pool creation not allowed" << dendl;
+    return -ENOENT;
+  }
+
   r = rad->pool_create(pool.name.c_str());
   if (r < 0 && r != -EEXIST)
     return r;
@@ -5716,6 +5728,12 @@ done:
  */
 int RGWRados::create_pool(const rgw_pool& pool)
 {
+  bool rgw_auto_create_pools = cct->_conf->get_val<bool>("rgw_auto_create_pools");
+  if (!rgw_auto_create_pools) {
+    ldout(cct, 0) << " ERROR: " << __func__ << " automatic pool creation not allowed" << dendl;
+    return -ENOENT;
+  }
+
   int ret = 0;
 
   librados::Rados *rad = get_rados_handle();
@@ -6152,6 +6170,12 @@ int RGWRados::list_placement_set(set<rgw_pool>& names)
 
 int RGWRados::create_pools(vector<rgw_pool>& pools, vector<int>& retcodes)
 {
+  bool rgw_auto_create_pools = cct->_conf->get_val<bool>("rgw_auto_create_pools");
+  if (!rgw_auto_create_pools) {
+    ldout(cct, 0) << " ERROR: " << __func__ << " automatic pool creation not allowed" << dendl;
+    return -ENOENT;
+  }
+
   vector<librados::PoolAsyncCompletion *> completions;
   vector<int> rets;
 
