@@ -4370,6 +4370,10 @@ std::vector<Option> get_global_options() {
 
 std::vector<Option> get_rgw_options() {
   return std::vector<Option>({
+    Option("rgw_auto_create_pools", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(false)
+    .set_description(""),
+
     Option("rgw_small_data_as_xattr_max_size", Option::TYPE_INT, Option::LEVEL_ADVANCED)
     .set_default(-1)
     .set_description("All objects with size less or equal than this value will stored directly in xattr."),

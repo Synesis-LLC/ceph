@@ -2276,6 +2276,11 @@ librados::config_t librados::Rados::cct()
   return (config_t)client->cct;
 }
 
+CephContext* librados::Rados::ctx()
+{
+  return client->cct;
+}
+
 int librados::Rados::watch_flush()
 {
   if (!client)
