@@ -440,6 +440,15 @@ prepare_conf() {
         filestore fd cache size = 32
         run dir = $CEPH_OUT_DIR
         enable experimental unrecoverable data corrupting features = ""
+
+        mon_osd_initial_require_min_compat_client = luminous
+        mon_crush_min_required_version = jewel
+
+        osd_pool_default_pg_num  = 32
+        osd_pool_default_pgp_num = 32
+        mon_max_pg_per_osd = 100000
+        mon_max_pool_pg_num = 262144
+
 EOF
 	if [ "$lockdep" -eq 1 ] ; then
 		wconf <<EOF
