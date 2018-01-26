@@ -17,7 +17,7 @@ import sys
 # available modes: 'none', 'crush', 'crush-compat', 'upmap', 'osd_weight'
 DEFAULT_MODE = 'reweight'
 DEFAULT_SLEEP_INTERVAL = 60   # seconds
-DEFAULT_MAX_MISPLACED = 0.0    # max ratio of pgs replaced at a time
+DEFAULT_MAX_MISPLACED = 0.000001    # max ratio of pgs replaced at a time
 
 TIME_FORMAT = '%Y-%m-%d_%H:%M:%S'
 
@@ -386,8 +386,11 @@ class Module(MgrModule):
                                   'current cluster')
             return (0, self.evaluate(ms, verbose=verbose), '')
         elif command['prefix'] == 'balancer optimize':
+            self.log.error('plan_create %s' % command['plan'])
             plan = self.plan_create(command['plan'])
+            self.log.error('optimize %s' % command['plan'])
             self.optimize(plan)
+            self.log.error('optimization finished %s' % command['plan'])
             return (0, '', '')
         elif command['prefix'] == 'balancer rm':
             self.plan_rm(command['name'])
@@ -442,24 +445,24 @@ class Module(MgrModule):
             return tod >= begin or tod < end
 
     def serve(self):
-        self.log.info('Starting')
+        self.log.error('Starting')
         while self.run:
             self.active = self.get_cfg('active')
             begin_time = self.get_cfg('begin_time')
             end_time = self.get_cfg('end_time')
             timeofday = time.strftime('%H%M', time.localtime())
-            self.log.debug('Waking up [%s, scheduled for %s-%s, now %s]',
+            self.log.error('Waking up [%s, scheduled for %s-%s, now %s]',
                            "active" if self.active else "inactive",
                            begin_time, end_time, timeofday)
             sleep_interval = float(self.get_cfg('sleep_interval'))
             if self.active and self.time_in_interval(timeofday, begin_time, end_time):
-                self.log.debug('Running')
+                self.log.error('Running')
                 name = 'auto_%s' % time.strftime(TIME_FORMAT, time.gmtime())
                 plan = self.plan_create(name)
                 if self.optimize(plan):
                     self.execute(plan)
                 self.plan_rm(name)
-            self.log.debug('Sleeping for %d', sleep_interval)
+            self.log.error('Sleeping for %d', sleep_interval)
             self.event.wait(sleep_interval)
             self.event.clear()
 
@@ -666,10 +669,10 @@ class Module(MgrModule):
         return pe.show(verbose=verbose)
 
     def optimize(self, plan):
-        self.log.info('Optimize plan %s' % plan.name)
+        self.log.error('Optimize plan %s' % plan.name)
         plan.mode = self.get_cfg('mode')
         max_misplaced = float(self.get_cfg('max_misplaced'))
-        self.log.info('Mode %s, max misplaced %f' %
+        self.log.error('Mode %s, max misplaced %f' %
                       (plan.mode, max_misplaced))
 
         info = self.get('pg_status')
@@ -677,16 +680,16 @@ class Module(MgrModule):
         degraded = info.get('degraded_ratio', 0.0)
         inactive = info.get('inactive_pgs_ratio', 0.0)
         misplaced = info.get('misplaced_ratio', 0.0)
-        self.log.debug('unknown %f degraded %f inactive %f misplaced %g',
+        self.log.error('unknown %f degraded %f inactive %f misplaced %g',
                        unknown, degraded, inactive, misplaced)
         if unknown > 0.0:
-            self.log.info('Some PGs (%f) are unknown; waiting', unknown)
+            self.log.error('Some PGs (%f) are unknown; waiting', unknown)
         elif degraded > 0.0:
-            self.log.info('Some objects (%f) are degraded; waiting', degraded)
+            self.log.error('Some objects (%f) are degraded; waiting', degraded)
         elif inactive > 0.0:
-            self.log.info('Some PGs (%f) are inactive; waiting', inactive)
+            self.log.error('Some PGs (%f) are inactive; waiting', inactive)
         elif misplaced >= max_misplaced:
-            self.log.info('Too many objects (%f > %f) are misplaced; waiting',
+            self.log.error('Too many objects (%f > %f) are misplaced; waiting',
                           misplaced, max_misplaced)
         else:
             if plan.mode == 'upmap':
@@ -696,9 +699,9 @@ class Module(MgrModule):
             elif plan.mode == 'reweight':
                 return self.optimize_reweight(plan)
             elif plan.mode == 'none':
-                self.log.info('Idle')
+                self.log.error('Idle')
             else:
-                self.log.info('Unrecognized mode %s' % plan.mode)
+                self.log.error('Unrecognized mode %s' % plan.mode)
         return False
 
         ##
@@ -969,7 +972,7 @@ class Module(MgrModule):
             target_weight = min(target_weight, 1.0)
             if target_weight != osd['current_weight']:
                 new_weights[osd_id] = target_weight
-                self.log.info('osd.%d (%f) %f -> %f' % (osd_id, osd['usage_diff'], osd['current_weight'], target_weight))
+                self.log.error('osd.%d (%f) %f -> %f' % (osd_id, osd['usage_diff'], osd['current_weight'], target_weight))
 
         return new_weights
 
@@ -987,6 +990,7 @@ class Module(MgrModule):
         insane_stats = False
         osds = ms.osdmap_dump.get('osds',[])
         devices = ms.crush_dump['devices']
+        self.log.error('collected %d devices, %d stats' % (len(devices), len(stats_by_osd)))
         for device in devices:
             osd_id = device['id']
             osd = osds[osd_id]
@@ -1002,34 +1006,44 @@ class Module(MgrModule):
                         'current_weight' : osd['weight'],
                     }
                     if stat['kb'] != (stat['kb_used'] + stat['kb_avail']):
-                        self.log.info('skip plan, insane stats: osd.%d : size=%d, avail=%d, used=%d' 
+                        self.log.error('skip plan, insane stats: osd.%d : size=%d, avail=%d, used=%d' 
                                       % (osd_id, stat['kb'], stat['kb_avail'], stat['kb_used']))
                         insane_stats = True
+                else:
+                    self.log.error('no stats osd.%d' % osd_id)
+            else:
+                self.log.error('skip osd.%d in=%d up=%d' % (osd_id, osd['in'], osd['up']))
         
         return not insane_stats
 
 
     def optimize_reweight(self, plan):
         # collect all rewuired data, filter and prerocess
+        self.log.error('collect_osd_by_class')
         if not self.collect_osd_by_class(plan):
             return False
 
+        self.log.error('osd classes: ' + ','.join(plan.osd_by_device_class.keys()))
+
         # calculate new reweight values for each device_class osd group
         for device_class,osds in plan.osd_by_device_class.iteritems():
+            self.log.error('calculate_usage %s %d' % (device_class, len(osds)))
             if not self.calculate_usage(osds):
                 return False
 
         # filter reweights while we must limit number of reweighted osds
         for device_class,osds in plan.osd_by_device_class.iteritems():
+            self.log.error('calculate_reweights %s %d' % (device_class, len(osds)))
             reweights = self.calculate_reweights(osds)
+            self.log.error('reweights: %s %d' % (device_class, len(reweights)))
             for osd_id,w in reweights.iteritems():
                 plan.osd_weights[osd_id] = w
 
         x = len(plan.osd_weights)
         if x > 0:
-            self.log.info('plan reweight %d osds' % x)
+            self.log.error('plan reweight %d osds' % x)
         else:
-            self.log.info('no osd to reweight')
+            self.log.error('no osd to reweight')
 
         return x > 0
 
@@ -1088,7 +1102,7 @@ class Module(MgrModule):
         self.log.info('do_osd_weight (not yet implemented)')
 
     def execute(self, plan):
-        self.log.info('Executing plan %s' % plan.name)
+        self.log.error('Executing plan %s' % plan.name)
 
         commands = []
 
@@ -1123,7 +1137,7 @@ class Module(MgrModule):
         for osd, weight in plan.osd_weights.iteritems():
             reweightn[str(osd)] = str(int(weight * float(0x10000)))
         if len(reweightn):
-            self.log.info('ceph osd reweightn %s', reweightn)
+            self.log.error('ceph osd reweightn %s', reweightn)
             result = CommandResult('foo')
             self.send_command(result, 'mon', '', json.dumps({
                 'prefix': 'osd reweightn',
@@ -1160,10 +1174,10 @@ class Module(MgrModule):
             commands.append(result)
 
         # wait for commands
-        self.log.debug('commands %s' % commands)
+        self.log.error('commands %s' % commands)
         for result in commands:
             r, outb, outs = result.wait()
             if r != 0:
                 self.log.error('Error on command')
                 return
-        self.log.debug('done')
+        self.log.error('done')
