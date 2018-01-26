@@ -12,6 +12,7 @@ import time
 from mgr_module import MgrModule, CommandResult
 from threading import Event
 from pprint import pformat
+import sys
 
 # available modes: 'none', 'crush', 'crush-compat', 'upmap', 'osd_weight'
 DEFAULT_MODE = 'none'
@@ -50,6 +51,22 @@ class MappingState:
             return float(misplaced) / float(num)
         return 0.0
 
+    def dump(self):
+        return {
+            'desc' : self.desc,
+            'osdmap_dump' : self.osdmap_dump,
+            'crush_dump' : self.crush_dump,
+            'pg_dump' : self.pg_dump,
+            'pg_stat' : self.pg_stat,
+            'poolids' : self.poolids,
+            'pg_up' : self.pg_up,
+            'pg_up_by_poolid' : self.pg_up_by_poolid
+        }
+
+    def dump_str(self):
+        return json.dumps(self.dump(), indent=4)
+
+
 class Plan:
     def __init__(self, name, ms):
         self.mode = 'unknown'
@@ -59,6 +76,8 @@ class Plan:
         self.osd_weights = {}
         self.compat_ws = {}
         self.inc = ms.osdmap.new_incremental()
+        self.osd_by_device_class = {}
+        self.osd_current_weights = {}
 
     def final_state(self):
         self.inc.set_osd_reweights(self.osd_weights)
@@ -68,7 +87,20 @@ class Plan:
                             'plan %s final' % self.name)
 
     def dump(self):
-        return json.dumps(self.inc.dump(), indent=4)
+        return {
+            'mode' : self.mode,
+            'name' : self.name,
+            'osd_by_device_class' : self.osd_by_device_class,
+            'osd_current_weights' : self.osd_current_weights,
+            'osd_weights' : self.osd_weights,
+            'compat_ws' : self.compat_ws,
+
+            'initial' : self.initial.dump(),
+            #'incremental' : self.inc.dump()
+        }
+
+    def dump_str(self):
+        return json.dumps(self.dump(), indent=4)
 
     def show(self):
         ls = []
@@ -198,7 +230,7 @@ class Module(MgrModule):
             "perm": "r",
         },
         {
-            "cmd": "balancer mode name=mode,type=CephChoices,strings=none|crush-compat|upmap",
+            "cmd": "balancer mode name=mode,type=CephChoices,strings=none|crush-compat|upmap|reweight",
             "desc": "Set balancer mode",
             "perm": "rw",
         },
@@ -224,7 +256,7 @@ class Module(MgrModule):
         },
         {
             "cmd": "balancer optimize name=plan,type=CephString",
-            "desc": "Run optimizer to create a new plan",
+            "desc": "Run optimizer on plan",
             "perm": "rw",
         },
         {
@@ -274,6 +306,12 @@ class Module(MgrModule):
         'crush_compat_max_iterations' : (int, 25),
         'crush_compat_step' : (float, .5),
         'active' : (bool, ''),
+
+        'min_usage_start_reweight' : (float, .3),
+        'max_usage_difference' : (float, .05),
+        'max_osds_reweight' : (int, 5),
+        'max_reweight_step' : (float, .01),
+        'min_allowed_reweight' : (float, .5),
     }
 
     def get_cfg(self, key):
@@ -282,6 +320,7 @@ class Module(MgrModule):
     def __init__(self, *args, **kwargs):
         super(Module, self).__init__(*args, **kwargs)
         self.event = Event()
+        self.log.info('Python ' + sys.version)
 
     def handle_command(self, command):
         self.log.warn("Handling command: '%s'" % str(command))
@@ -312,8 +351,7 @@ class Module(MgrModule):
             if 'plan' in command:
                 plan = self.plans.get(command['plan'])
                 if not plan:
-                    return (-errno.ENOENT, '', 'plan %s not found' %
-                            command['plan'])
+                    return (-errno.ENOENT, '', 'plan %s not found' % command['plan'])
                 ms = plan.final_state()
             else:
                 ms = MappingState(self.get_osdmap(),
@@ -334,7 +372,7 @@ class Module(MgrModule):
             plan = self.plans.get(command['plan'])
             if not plan:
                 return (-errno.ENOENT, '', 'plan %s not found' % command['plan'])
-            return (0, plan.dump(), '')
+            return (0, plan.dump_str(), '')
         elif command['prefix'] == 'balancer show':
             plan = self.plans.get(command['plan'])
             if not plan:
@@ -625,6 +663,8 @@ class Module(MgrModule):
                 return self.do_upmap(plan)
             elif plan.mode == 'crush-compat':
                 return self.do_crush_compat(plan)
+            elif plan.mode == 'reweight':
+                return self.optimize_reweight(plan)
             elif plan.mode == 'none':
                 self.log.info('Idle')
             else:
@@ -827,6 +867,111 @@ class Module(MgrModule):
             self.log.info('Failed to find further optimization, score %f',
                           pe.score)
             return False
+
+
+    def calculate_target_reweights(self, osds):
+        # calculate usage, average usage, min and max usage
+        max_current_reweight = 0.0
+        osd_count = 0
+        avg_usage = 0.0
+        min_usage = 1.0
+        max_usage = 0.0
+        for osd_id,osd in osds.iteritems():
+            osd_count += 1
+            used = 1.0 * osd['used']
+            size = 1.0 * osd['size']
+            avail = 1.0 *  osd['avail']
+            usage = max(used/size, used/(used + avail))
+            osd['usage'] = usage
+            avg_usage += usage
+            if min_usage > usage:
+                min_usage = usage
+            if max_usage < usage:
+                max_usage = usage
+            if max_current_reweight < osd['current_reweight']:
+                max_current_reweight = osd['current_reweight']
+        avg_usage /= osd_count
+
+        x = min_usage / max_usage
+        #y = (avg_usage - min_usage)/max_usage
+        z = (max_usage - avg_usage)/max_usage
+        avg_weight = x + z
+
+        # calculate usage difference
+        for osd_id,osd in osds.iteritems():
+            osd['usage_diff'] = osd['usage'] - avg_usage
+            osd['usage_mult'] = osd['usage'] / avg_usage
+
+        # calculate target weights
+        for osd_id,osd in osds.iteritems():
+            target_weight_fix = avg_weight - (osd['usage_diff'] / max_usage)
+            osd['target_weight'] = target_weight_fix * osd['current_reweight'] / max_current_reweight
+
+
+    def filter_reweights(self, osds):
+        min_usage_start_reweight = self.get_cfg('min_usage_start_reweight')
+        max_usage_difference = self.get_cfg('max_usage_difference')
+        max_osds_reweight = self.get_cfg('max_osds_reweight')
+        max_reweight_step = self.get_cfg('max_reweight_step')
+        min_allowed_reweight = self.get_cfg('min_allowed_reweight')
+
+        new_weights = {}
+        # select most used osds and least used if weight less than 1.0
+
+
+
+        # apply max_reweight_step to current weights
+
+        for osd_id,osd in osds.iteritems():
+            new_weights[osd_id] = osd['target_weight']
+
+        return new_weights
+
+
+    def collect_osd_by_class(self, plan):
+        ms = plan.initial
+        
+        # convert list to dict by osd_id
+        osd_stats = ms.pg_dump.get('osd_stats', [])
+        stats_by_osd = {}
+        for stat in osd_stats:
+            stats_by_osd[stat['osd']] = stat
+
+        # group osds by device_class and filter up and in osds
+        osds = ms.osdmap_dump.get('osds',[])
+        devices = ms.crush_dump['devices']
+        for device in devices:
+            osd_id = device['id']
+            osd = osds[osd_id]
+            if osd['in'] == 1 and osd['up'] == 1:
+                if device['class'] not in plan.osd_by_device_class:
+                    plan.osd_by_device_class[device['class']] = {}
+                stat = stats_by_osd.get(osd_id)
+                if stat:
+                    plan.osd_by_device_class[device['class']][osd_id] = {
+                        'used'  : stat['kb_used'],
+                        'avail' : stat['kb_avail'],
+                        'size'  : stat['kb'],
+                        'current_reweight' : osd['weight'],
+                    }
+
+
+    def optimize_reweight(self, plan):
+        # collect all rewuired data, filter and prerocess
+        self.collect_osd_by_class(plan)
+
+        # calculate new reweight values for each device_class osd group
+        for device_class,osds in plan.osd_by_device_class.iteritems():
+            self.calculate_target_reweights(osds)
+
+        # filter reweights while we must limit number of reweighted osds
+        for device_class,osds in plan.osd_by_device_class.iteritems():
+            reweights = self.filter_reweights(osds)
+            for osd_id,w in reweights.iteritems():
+                plan.osd_weights[osd_id] = w
+
+        return len(plan.osd_weights) > 0
+
 
     def get_compat_weight_set_weights(self):
         # enable compat weight-set

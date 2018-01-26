@@ -480,7 +480,7 @@ EOF
         rgw gc obj min wait = 10
          
 [client.rgw]
-        rgw_auto_create_pools = true
+        rgw_auto_create_pools = false
 
         rgw_lc_threads_count = 3
 
