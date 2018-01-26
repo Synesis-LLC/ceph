@@ -318,7 +318,7 @@ class Module(MgrModule):
         # will not reweight osds
         # with usage that differ from average usage
         # lower than max_usage_difference
-        'max_usage_difference' : (float, .01),
+        'max_usage_difference' : (float, .05),
 
         # max number of osds allowed to reweight at one time
         'max_osds_reweight_down' : (int, 3),
