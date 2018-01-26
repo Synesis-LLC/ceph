@@ -15,12 +15,11 @@ from pprint import pformat
 import sys
 
 # available modes: 'none', 'crush', 'crush-compat', 'upmap', 'osd_weight'
-DEFAULT_MODE = 'none'
+DEFAULT_MODE = 'reweight'
 DEFAULT_SLEEP_INTERVAL = 60   # seconds
-DEFAULT_MAX_MISPLACED = .05    # max ratio of pgs replaced at a time
+DEFAULT_MAX_MISPLACED = 0.0    # max ratio of pgs replaced at a time
 
 TIME_FORMAT = '%Y-%m-%d_%H:%M:%S'
-
 
 class MappingState:
     def __init__(self, osdmap, pg_dump, desc=''):
@@ -51,8 +50,8 @@ class MappingState:
             return float(misplaced) / float(num)
         return 0.0
 
-    def dump(self):
-        return {
+    def dump(self, path=None):
+        all = {
             'desc' : self.desc,
             'osdmap_dump' : self.osdmap_dump,
             'crush_dump' : self.crush_dump,
@@ -62,9 +61,13 @@ class MappingState:
             'pg_up' : self.pg_up,
             'pg_up_by_poolid' : self.pg_up_by_poolid
         }
+        if path:
+            return {path : dpath.util.search(all, path)}
+        else:
+            return all
 
-    def dump_str(self):
-        return json.dumps(self.dump(), indent=4)
+    def dump_str(self, path=None):
+        return json.dumps(self.dump(path), indent=4)
 
 
 class Plan:
@@ -77,7 +80,6 @@ class Plan:
         self.compat_ws = {}
         self.inc = ms.osdmap.new_incremental()
         self.osd_by_device_class = {}
-        self.osd_current_weights = {}
 
     def final_state(self):
         self.inc.set_osd_reweights(self.osd_weights)
@@ -86,21 +88,24 @@ class Plan:
                             self.initial.pg_dump,
                             'plan %s final' % self.name)
 
-    def dump(self):
-        return {
+    def dump(self, path=None):
+        all = {
             'mode' : self.mode,
             'name' : self.name,
             'osd_by_device_class' : self.osd_by_device_class,
-            'osd_current_weights' : self.osd_current_weights,
             'osd_weights' : self.osd_weights,
             'compat_ws' : self.compat_ws,
 
             'initial' : self.initial.dump(),
-            #'incremental' : self.inc.dump()
+            'incremental' : self.inc.dump()
         }
+        if path:
+            return {path : dpath.util.search(all, path)}
+        else:
+            return all
 
-    def dump_str(self):
-        return json.dumps(self.dump(), indent=4)
+    def dump_str(self, path=None):
+        return json.dumps(self.dump(path), indent=4)
 
     def show(self):
         ls = []
@@ -275,7 +280,7 @@ class Module(MgrModule):
             "perm": "rw",
         },
         {
-            "cmd": "balancer dump name=plan,type=CephString",
+            "cmd": "balancer dump name=plan,type=CephString, name=path,type=CephString,req=false",
             "desc": "Show an optimization plan",
             "perm": "r",
         },
@@ -305,12 +310,24 @@ class Module(MgrModule):
         'upmap_max_deviation' : (float, .01),
         'crush_compat_max_iterations' : (int, 25),
         'crush_compat_step' : (float, .5),
-        'active' : (bool, ''),
+        'active' : (bool, '1'),
 
+        # osds used lower than min_usage_start_reweight will not ne reweighted
         'min_usage_start_reweight' : (float, .3),
-        'max_usage_difference' : (float, .05),
-        'max_osds_reweight' : (int, 5),
-        'max_reweight_step' : (float, .01),
+
+        # will not reweight osds
+        # with usage that differ from average usage
+        # lower than max_usage_difference
+        'max_usage_difference' : (float, .01),
+
+        # max number of osds allowed to reweight at one time
+        'max_osds_reweight_down' : (int, 3),
+        'max_osds_reweight_up' : (int, 3),
+
+        # max step of weight change for each osd
+        'max_reweight_step' : (float, .001),
+
+        # protect from setting osd weight lower than min_allowed_reweight
         'min_allowed_reweight' : (float, .5),
     }
 
@@ -321,6 +338,15 @@ class Module(MgrModule):
         super(Module, self).__init__(*args, **kwargs)
         self.event = Event()
         self.log.info('Python ' + sys.version)
+        self.log.info('sys.path:')
+        for path in sys.path:
+            self.log.info('    ' + path)
+        try:
+            self.log.info('try import dpath')
+            import dpath
+        except Exception as e:
+            self.log.error(e.message)
+
 
     def handle_command(self, command):
         self.log.warn("Handling command: '%s'" % str(command))
@@ -329,6 +355,7 @@ class Module(MgrModule):
                 'plans': self.plans.keys(),
                 'active': self.active,
                 'mode': self.get_cfg('mode'),
+                'run' : self.run,
             }
             return (0, json.dumps(s, indent=4), '')
         elif command['prefix'] == 'balancer mode':
@@ -372,7 +399,10 @@ class Module(MgrModule):
             plan = self.plans.get(command['plan'])
             if not plan:
                 return (-errno.ENOENT, '', 'plan %s not found' % command['plan'])
-            return (0, plan.dump_str(), '')
+            if 'path' in command:
+                return (0, plan.dump_str(command['path']), '')
+            else:
+                return (0, plan.dump_str(), '')
         elif command['prefix'] == 'balancer show':
             plan = self.plans.get(command['plan'])
             if not plan:
@@ -869,61 +899,77 @@ class Module(MgrModule):
             return False
 
 
-    def calculate_target_reweights(self, osds):
+    def calculate_usage(self, osds):
         # calculate usage, average usage, min and max usage
-        max_current_reweight = 0.0
-        osd_count = 0
-        avg_usage = 0.0
-        min_usage = 1.0
-        max_usage = 0.0
+        total_used = 0
+        total_size = 0
+        total_avail = 0
         for osd_id,osd in osds.iteritems():
-            osd_count += 1
             used = 1.0 * osd['used']
             size = 1.0 * osd['size']
-            avail = 1.0 *  osd['avail']
-            usage = max(used/size, used/(used + avail))
+            avail = 1.0 * osd['avail']
+            total_used += used
+            total_size += size
+            total_avail += avail
+            usage = used/size
             osd['usage'] = usage
-            avg_usage += usage
-            if min_usage > usage:
-                min_usage = usage
-            if max_usage < usage:
-                max_usage = usage
-            if max_current_reweight < osd['current_reweight']:
-                max_current_reweight = osd['current_reweight']
-        avg_usage /= osd_count
 
-        x = min_usage / max_usage
-        #y = (avg_usage - min_usage)/max_usage
-        z = (max_usage - avg_usage)/max_usage
-        avg_weight = x + z
+        avg_usage = total_used/total_size
 
         # calculate usage difference
         for osd_id,osd in osds.iteritems():
             osd['usage_diff'] = osd['usage'] - avg_usage
             osd['usage_mult'] = osd['usage'] / avg_usage
 
-        # calculate target weights
+        # calculate some kind of optimal weight
+        max_optimal_weight = 0.0
         for osd_id,osd in osds.iteritems():
-            target_weight_fix = avg_weight - (osd['usage_diff'] / max_usage)
-            osd['target_weight'] = target_weight_fix * osd['current_reweight'] / max_current_reweight
+            optimal_weight = osd['current_weight'] * avg_usage / osd['usage']
+            osd['optimal_weight'] = optimal_weight
+            if max_optimal_weight < optimal_weight:
+                max_optimal_weight = optimal_weight
+
+        # normalize optimal_weight for max=1.0 with saved relative ratio
+        for osd_id,osd in osds.iteritems():
+            osd['optimal_weight'] = osd['optimal_weight'] / max_optimal_weight
+        
+        return True
 
 
-    def filter_reweights(self, osds):
+    def calculate_reweights(self, osds):
         min_usage_start_reweight = self.get_cfg('min_usage_start_reweight')
         max_usage_difference = self.get_cfg('max_usage_difference')
-        max_osds_reweight = self.get_cfg('max_osds_reweight')
+        max_osds_reweight_up = self.get_cfg('max_osds_reweight_up')
+        max_osds_reweight_down = self.get_cfg('max_osds_reweight_down')
         max_reweight_step = self.get_cfg('max_reweight_step')
         min_allowed_reweight = self.get_cfg('min_allowed_reweight')
 
-        new_weights = {}
-        # select most used osds and least used if weight less than 1.0
-
-
-
-        # apply max_reweight_step to current weights
-
+        # select osds that have usage over max_usage_difference
+        selected_osd_id = []
         for osd_id,osd in osds.iteritems():
-            new_weights[osd_id] = osd['target_weight']
+            if osd['usage'] >= min_usage_start_reweight and abs(osd['usage_diff']) > max_usage_difference:
+                selected_osd_id.append(osd_id)
+
+        # select most overused and underused osds
+        selected_osd_id = sorted(selected_osd_id, key=lambda id: osds[id]['usage'])
+        a = selected_osd_id[:max_osds_reweight_down]
+        b = selected_osd_id[-max_osds_reweight_up:]
+        selected_osd_id = set(a) | set(b)
+
+        new_weights = {}
+        # apply max_reweight_step to current weights
+        for osd_id in selected_osd_id:
+            osd = osds[osd_id]
+            reweight_step = osd['optimal_weight'] - osd['current_weight']
+            if abs(reweight_step) > max_reweight_step:
+                reweight_step /= abs(reweight_step)
+                reweight_step *= max_reweight_step
+            target_weight = osd['current_weight'] + reweight_step
+            target_weight = max(target_weight, min_allowed_reweight)
+            target_weight = min(target_weight, 1.0)
+            if target_weight != osd['current_weight']:
+                new_weights[osd_id] = target_weight
+                self.log.info('osd.%d (%f) %f -> %f' % (osd_id, osd['usage_diff'], osd['current_weight'], target_weight))
 
         return new_weights
 
@@ -938,6 +984,7 @@ class Module(MgrModule):
             stats_by_osd[stat['osd']] = stat
 
         # group osds by device_class and filter up and in osds
+        insane_stats = False
         osds = ms.osdmap_dump.get('osds',[])
         devices = ms.crush_dump['devices']
         for device in devices:
@@ -952,25 +999,39 @@ class Module(MgrModule):
                         'used'  : stat['kb_used'],
                         'avail' : stat['kb_avail'],
                         'size'  : stat['kb'],
-                        'current_reweight' : osd['weight'],
+                        'current_weight' : osd['weight'],
                     }
+                    if stat['kb'] != (stat['kb_used'] + stat['kb_avail']):
+                        self.log.info('skip plan, insane stats: osd.%d : size=%d, avail=%d, used=%d' 
+                                      % (osd_id, stat['kb'], stat['kb_avail'], stat['kb_used']))
+                        insane_stats = True
+        
+        return not insane_stats
 
 
     def optimize_reweight(self, plan):
         # collect all rewuired data, filter and prerocess
-        self.collect_osd_by_class(plan)
+        if not self.collect_osd_by_class(plan):
+            return False
 
         # calculate new reweight values for each device_class osd group
         for device_class,osds in plan.osd_by_device_class.iteritems():
-            self.calculate_target_reweights(osds)
+            if not self.calculate_usage(osds):
+                return False
 
         # filter reweights while we must limit number of reweighted osds
         for device_class,osds in plan.osd_by_device_class.iteritems():
-            reweights = self.filter_reweights(osds)
+            reweights = self.calculate_reweights(osds)
             for osd_id,w in reweights.iteritems():
                 plan.osd_weights[osd_id] = w
 
-        return len(plan.osd_weights) > 0
+        x = len(plan.osd_weights)
+        if x > 0:
+            self.log.info('plan reweight %d osds' % x)
+        else:
+            self.log.info('no osd to reweight')
+
+        return x > 0
 
 
     def get_compat_weight_set_weights(self):
