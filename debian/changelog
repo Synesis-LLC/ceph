@@ -1,9 +1,13 @@
-ceph (12.2.2-1.8) UNRELEASED; urgency=medium
+ceph (12.2.2-1.9) UNRELEASED; urgency=medium
 
+  [ Andrey Martyanov ]
   * Decrease librados command execution timeouts
   * Redirect root requests to base API URL
 
- -- Andrey Martyanov <andrey.martyanov@synesis.ru>  Thu, 21 Dec 2017 11:58:17 +0300
+  [ Aleksei Gutikov ]
+  * added mgr/balancer reweight mode
+
+ -- Aleksei Gutikov <aleksey.gutikov@synesis.ru>  Fri, 26 Jan 2018 18:06:10 +0300
 
 ceph (12.2.2-1.5) stable; urgency=medium
 
