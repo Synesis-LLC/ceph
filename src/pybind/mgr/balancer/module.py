@@ -17,7 +17,7 @@ import sys
 # available modes: 'none', 'crush', 'crush-compat', 'upmap', 'osd_weight'
 DEFAULT_MODE = 'reweight'
 DEFAULT_SLEEP_INTERVAL = 60   # seconds
-DEFAULT_MAX_MISPLACED = 0.000001    # max ratio of pgs replaced at a time
+DEFAULT_MAX_MISPLACED = 0.0    # max ratio of pgs replaced at a time
 
 TIME_FORMAT = '%Y-%m-%d_%H:%M:%S'
 
@@ -393,7 +393,10 @@ class Module(MgrModule):
             self.log.error('optimization finished %s' % command['plan'])
             return (0, '', '')
         elif command['prefix'] == 'balancer rm':
-            self.plan_rm(command['name'])
+            plan = self.plans.get(command['plan'])
+            if not plan:
+                return (-errno.ENOENT, '', 'plan %s not found' % command['plan'])
+            self.plan_rm(plan)
             return (0, '', '')
         elif command['prefix'] == 'balancer reset':
             self.plans = {}
@@ -688,7 +691,7 @@ class Module(MgrModule):
             self.log.error('Some objects (%f) are degraded; waiting', degraded)
         elif inactive > 0.0:
             self.log.error('Some PGs (%f) are inactive; waiting', inactive)
-        elif misplaced >= max_misplaced:
+        elif misplaced > max_misplaced:
             self.log.error('Too many objects (%f > %f) are misplaced; waiting',
                           misplaced, max_misplaced)
         else:
