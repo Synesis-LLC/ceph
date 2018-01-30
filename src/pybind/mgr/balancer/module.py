@@ -16,7 +16,7 @@ import sys
 
 # available modes: 'none', 'crush', 'crush-compat', 'upmap', 'osd_weight'
 DEFAULT_MODE = 'reweight'
-DEFAULT_SLEEP_INTERVAL = 30   # seconds
+DEFAULT_SLEEP_INTERVAL = 60   # seconds
 DEFAULT_MAX_MISPLACED = 0.0    # max ratio of pgs replaced at a time
 
 TIME_FORMAT = '%Y-%m-%d_%H:%M:%S'
@@ -310,11 +310,11 @@ class Module(MgrModule):
         'upmap_max_deviation' : (float, .01),
         'crush_compat_max_iterations' : (int, 25),
         'crush_compat_step' : (float, .5),
-        'active' : (bool, ''),
+        'active' : (bool, '1'),
 
         # will do reweight if even one osd weight difference greater than
-        'max_usage_difference_hdd' : (float, .04),
-        'max_usage_difference_ssd' : (float, .04),
+        'max_usage_difference_hdd' : (float, .03),
+        'max_usage_difference_ssd' : (float, .03),
 
         # max step of weight change for each osd
         'max_reweight_step_hdd' : (float, .02),
@@ -937,11 +937,12 @@ class Module(MgrModule):
         for osd_id,osd in osds.iteritems():
             osd['optimal_weight'] = osd['optimal_weight'] / max_optimal_weight
             osd['reweight_step'] = osd['optimal_weight'] - osd['current_weight']
-        
-        return True
 
 
     def calculate_reweights(self, osds, device_class):
+        self.log.error('calculate_optimal_weight %s %d' % (device_class, len(osds)))
+        self.calculate_optimal_weight(osds)
+
         max_usage_difference = self.get_cfg('max_usage_difference', device_class)
         max_reweight_step = self.get_cfg('max_reweight_step', device_class)
 
@@ -955,16 +956,15 @@ class Module(MgrModule):
             return {}
 
         # normalize reweight_step
-        max_abs_reweight_step = 0.0
-        for osd_id,osd in osds.iteritems():
-            reweight_step = osd['reweight_step']
-            if max_abs_reweight_step < abs(reweight_step):
-                max_abs_reweight_step = abs(reweight_step)
+        max_abs_reweight_step = max([abs(el[1]['reweight_step']) for el in osds.iteritems()])
+        step_scale = max_reweight_step / max_abs_reweight_step
 
         new_weights = {}
         # apply reweight step to current weights
         for osd_id,osd in osds.iteritems():
-            reweight_step = osd['reweight_step'] / max_abs_reweight_step * max_reweight_step
+            reweight_step = osd['reweight_step']
+            if step_scale < 1.0:
+                reweight_step *= step_scale
             target_weight = osd['current_weight'] + reweight_step
             target_weight = min(target_weight, 1.0)
             if target_weight != osd['current_weight']:
@@ -1015,18 +1015,12 @@ class Module(MgrModule):
 
 
     def optimize_reweight(self, plan):
-        # collect all rewuired data, filter and prerocess
+        # collect all required data, filter and prerocess
         self.log.error('collect_osd_by_class')
         if not self.collect_osd_by_class(plan):
             return False
 
         self.log.error('osd classes: ' + ','.join(plan.osd_by_device_class.keys()))
-
-        # calculate new reweight values for each device_class osd group
-        for device_class,osds in plan.osd_by_device_class.iteritems():
-            self.log.error('calculate_optimal_weight %s %d' % (device_class, len(osds)))
-            if not self.calculate_optimal_weight(osds):
-                return False
 
         # filter reweights while we must limit number of reweighted osds
         for device_class,osds in plan.osd_by_device_class.iteritems():
@@ -1050,7 +1044,7 @@ class Module(MgrModule):
             self.log.error('not allowed automatic force reweight')
             return False
 
-        # collect all rewuired data, filter and prerocess
+        # collect all required data, filter and prerocess
         self.log.error('collect_osd_by_class')
         if not self.collect_osd_by_class(plan):
             return False
@@ -1060,8 +1054,7 @@ class Module(MgrModule):
         # calculate new reweight values for each device_class osd group
         for device_class,osds in plan.osd_by_device_class.iteritems():
             self.log.error('calculate_optimal_weight %s %d' % (device_class, len(osds)))
-            if not self.calculate_optimal_weight(osds):
-                return False
+            self.calculate_optimal_weight(osds)
 
         for device_class,osds in plan.osd_by_device_class.iteritems():
             self.log.error('reweights: %s %d' % (device_class, len(osds)))
