@@ -315,6 +315,8 @@ class Module(MgrModule):
         # will do reweight if even one osd weight difference greater than
         'max_usage_difference_hdd' : (float, .03),
         'max_usage_difference_ssd' : (float, .03),
+        'abs_max_difference_hdd' : (bool, '1'),
+        'abs_max_difference_ssd' : (bool, '1'),
 
         # max step of weight change for each osd
         'max_reweight_step_hdd' : (float, .02),
@@ -944,13 +946,18 @@ class Module(MgrModule):
         self.calculate_optimal_weight(osds)
 
         max_usage_difference = self.get_cfg('max_usage_difference', device_class)
+        abs_max_difference = self.get_cfg('abs_max_difference', device_class)
         max_reweight_step = self.get_cfg('max_reweight_step', device_class)
 
         # check if exists osds with usage over max_usage_difference
         do_reweight = False
         for osd_id,osd in osds.iteritems():
-            if abs(osd['usage_diff']) > max_usage_difference:
-                do_reweight = True
+            if abs_max_difference:
+                if abs(osd['usage_diff']) > max_usage_difference:
+                    do_reweight = True
+            else:
+                if osd['usage_diff'] > max_usage_difference:
+                    do_reweight = True
 
         if not do_reweight:
             return {}
