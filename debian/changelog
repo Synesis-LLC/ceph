@@ -1,4 +1,4 @@
-ceph (12.2.2-2) UNRELEASED; urgency=medium
+ceph (12.2.2-2.1) UNRELEASED; urgency=medium
 
   [ Andrey Martyanov ]
   * Decrease librados command execution timeouts
@@ -7,8 +7,9 @@ ceph (12.2.2-2) UNRELEASED; urgency=medium
   [ Aleksei Gutikov ]
   * added mgr/balancer reweight mode
   * tested mgr/balancer reweight mode
+  * 
 
- -- Aleksei Gutikov <aleksey.gutikov@synesis.ru>  Tue, 30 Jan 2018 11:40:21 +0300
+ -- Aleksei Gutikov <aleksey.gutikov@synesis.ru>  Fri, 02 Feb 2018 15:57:27 +0300
 
 ceph (12.2.2-1.5) stable; urgency=medium
 
