@@ -51,7 +51,7 @@ class MappingState:
         return 0.0
 
     def dump(self, path=None):
-        all = {
+        return {
             'desc' : self.desc,
             'osdmap_dump' : self.osdmap_dump,
             'crush_dump' : self.crush_dump,
@@ -61,13 +61,6 @@ class MappingState:
             'pg_up' : self.pg_up,
             'pg_up_by_poolid' : self.pg_up_by_poolid
         }
-        if path:
-            return {path : dpath.util.search(all, path)}
-        else:
-            return all
-
-    def dump_str(self, path=None):
-        return json.dumps(self.dump(path), indent=4)
 
 
 class Plan:
@@ -100,7 +93,19 @@ class Plan:
             'incremental' : self.inc.dump()
         }
         if path:
-            return {path : dpath.util.search(all, path)}
+            subtree = all
+            for el in path.split('.'):
+                if el in subtree:
+                    subtree = subtree[el]
+                else:
+                    if el.isdigit():
+                        el = int(el)
+                    if el in subtree:
+                        subtree = subtree[el]
+                    else:
+                        return {'message': "Can't find path",
+                                'path': path.split('.')}
+            return subtree
         else:
             return all
 
@@ -340,8 +345,9 @@ class Module(MgrModule):
         for path in sys.path:
             self.log.info('    ' + path)
         try:
-            self.log.info('try import dpath')
-            import dpath
+            #self.log.info('try import dpath')
+            #import dpath
+            pass
         except Exception as e:
             self.log.error(e.message)
 
@@ -920,6 +926,10 @@ class Module(MgrModule):
             usage = used/size
             osd['usage'] = usage
 
+        if total_size == 0:
+            self.log.error('Total size is zero')
+            return False
+
         avg_usage = total_used/total_size
 
         # calculate usage difference
@@ -940,10 +950,13 @@ class Module(MgrModule):
             osd['optimal_weight'] = osd['optimal_weight'] / max_optimal_weight
             osd['reweight_step'] = osd['optimal_weight'] - osd['current_weight']
 
+        return True
+
 
     def calculate_reweights(self, osds, device_class):
         self.log.error('calculate_optimal_weight %s %d' % (device_class, len(osds)))
-        self.calculate_optimal_weight(osds)
+        if not self.calculate_optimal_weight(osds):
+            return {}
 
         max_usage_difference = self.get_cfg('max_usage_difference', device_class)
         abs_max_difference = self.get_cfg('abs_max_difference', device_class)
@@ -985,7 +998,13 @@ class Module(MgrModule):
         ms = plan.initial
         
         # convert list to dict by osd_id
-        osd_stats = ms.pg_dump.get('osd_stats', [])
+        osd_stats = ms.pg_dump.get('osd_stats')
+        if not osd_stats:
+            self.log.error('No osd stats')
+            return False
+        if len(osd_stats) == 0:
+            self.log.error('Empty osd stats')
+            return False
         stats_by_osd = {}
         for stat in osd_stats:
             stats_by_osd[stat['osd']] = stat
@@ -1032,10 +1051,11 @@ class Module(MgrModule):
         # filter reweights while we must limit number of reweighted osds
         for device_class,osds in plan.osd_by_device_class.iteritems():
             self.log.error('calculate_reweights %s %d' % (device_class, len(osds)))
-            reweights = self.calculate_reweights(osds, device_class)
-            self.log.error('reweights: %s %d' % (device_class, len(reweights)))
-            for osd_id,w in reweights.iteritems():
-                plan.osd_weights[osd_id] = w
+            if len(osds) > 0:
+                reweights = self.calculate_reweights(osds, device_class)
+                self.log.error('reweights: %s %d' % (device_class, len(reweights)))
+                for osd_id,w in reweights.iteritems():
+                    plan.osd_weights[osd_id] = w
 
         x = len(plan.osd_weights)
         if x > 0:
