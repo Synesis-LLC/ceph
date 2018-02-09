@@ -449,6 +449,11 @@ prepare_conf() {
         mon_max_pg_per_osd = 100000
         mon_max_pool_pg_num = 262144
 
+[restapi]
+        bind = 0.0.0.0:5000
+        clientname = client.admin
+        workers = 1
+
 EOF
 	if [ "$lockdep" -eq 1 ] ; then
 		wconf <<EOF

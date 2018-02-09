@@ -66,12 +66,49 @@ def parse_args():
     return parser.parse_known_args()
 
 
-def parse_conf(confpath, section, defaults={}):
-    config = ConfigParser.ConfigParser(defaults)
-    config.read(confpath)
-    if section not in config.sections():
-        config.add_section(section)
-    return config
+def parse_ceph_conf(confpath, defaults={}):
+    cfg = defaults.copy()
+    lines = []
+    with open(confpath) as f:
+        for line in f:
+            line = line.strip()
+            if len(line) > 0:
+                lines.append(line)
+    current_section = ''
+    for line in lines:
+        if '#' in line:
+            if line[0] == '#':
+                continue
+            a = line.split('#')
+            if len(a) > 1:
+                line = a[0]
+            else:
+                continue
+        if ';' in line:
+            if line[0] == ';':
+                continue
+            a = line.split(';')
+            if len(a) > 1:
+                line = a[0]
+            else:
+                continue
+        if line[0] == '[' and line[-1] == ']':
+            current_section = line[1:-1]
+            if current_section not in cfg:
+                cfg[current_section] = {}
+            continue
+        if '=' in line:
+            a = line.split('=')
+            key = a[0].strip()
+            key = '_'.join(key.split())
+            value = '='.join(a[1:]).strip()
+            if value[0] == '"' and value[-1] == '"':
+                value = line[1:-1]
+            if value[0] == "'" and value[-1] == "'":
+                value = line[1:-1]
+            cfg[current_section][key] = value
+
+    return cfg
 
 
 def main():
@@ -83,17 +120,17 @@ def main():
         'workers': '4',
         'bind': 'localhost:5000',
     }
-    conf = parse_conf(parsed_args.conf, section, defaults)
+    conf = parse_ceph_conf(parsed_args.conf, {section: defaults})
 
     factory_options = {
         'conf': parsed_args.conf,
         'cluster': parsed_args.cluster,
-        'clientname': parsed_args.name or conf.get(section, 'clientname'),
+        'clientname': parsed_args.name or conf[section]['clientname'],
         'extraargs': extra_args,
     }
     options = {
-        'bind': parsed_args.bind or conf.get(section, 'bind'),
-        'workers': parsed_args.workers or conf.getint(section, 'workers'),
+        'bind': parsed_args.bind or conf[section]['bind'],
+        'workers': parsed_args.workers or conf[section]['workers'],
     }
 
     CephRestApiApplication(
