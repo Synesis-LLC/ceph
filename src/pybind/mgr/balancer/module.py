@@ -240,7 +240,7 @@ class Module(MgrModule):
             "perm": "r",
         },
         {
-            "cmd": "balancer mode name=mode,type=CephChoices,strings=none|crush-compat|upmap|reweight|force_reweight",
+            "cmd": "balancer mode name=mode,type=CephChoices,strings=none|crush-compat|upmap|reweight",
             "desc": "Set balancer mode",
             "perm": "rw",
         },
@@ -705,8 +705,6 @@ class Module(MgrModule):
                 return self.do_crush_compat(plan)
             elif plan.mode == 'reweight':
                 return self.optimize_reweight(plan)
-            if plan.mode == 'force_reweight':
-                return self.force_reweight(plan)
             elif plan.mode == 'none':
                 self.log.error('Idle')
             else:
@@ -1073,30 +1071,6 @@ class Module(MgrModule):
             self.log.error('no osd to reweight')
 
         return x > 0
-
-
-    def force_reweight(self, plan):
-        if self.active:
-            self.log.error('not allowed automatic force reweight')
-            return False
-
-        # collect all required data, filter and prerocess
-        if not self.collect_osd_by_class(plan):
-            return False
-
-        self.log.error('device classes: ' + ', '.join(['%s: %d' % (key, len(val)) for key,val in plan.osd_by_device_class.iteritems()]))
-
-        # calculate new reweight values for each device_class osd group
-        for device_class,osds in plan.osd_by_device_class.iteritems():
-            self.calculate_optimal_weight(osds)
-
-        for device_class,osds in plan.osd_by_device_class.iteritems():
-            self.log.error(device_class + ': calculated new reweights: %d' % len(reweights))
-            for osd_id,osd in osds.iteritems():
-                plan.osd_weights[osd_id] = osd['optimal_weight']
-        
-        return True
-
 
 
     def get_compat_weight_set_weights(self):
