@@ -299,6 +299,11 @@ class Module(MgrModule):
             "desc": "Initialize config-key options",
             "perm": "rw",
         },
+        {
+            "cmd": "balancer reweight name=device_class,type=CephString, name=new_weight,type=CephFloat",
+            "desc": "Reweight all osds with device_class to new_weight",
+            "perm": "rw",
+        },
     ]
     active = False
     run = True
@@ -428,6 +433,13 @@ class Module(MgrModule):
         elif command['prefix'] == 'balancer init-cfg':
             self.init_cfg()
             return (0, '', '')
+        elif command['prefix'] == 'balancer reweight':
+            device_class = command['device_class']
+            new_weight = command['new_weight']
+            result = self.reweight(device_class, new_weight)
+            if result[0] != 0:
+                return (result[0], '', result[1])
+            return (0, '', '')
         else:
             return (-errno.EINVAL, '',
                     "Command not found '{0}'".format(command['prefix']))
@@ -472,6 +484,58 @@ class Module(MgrModule):
             self.log.error('Sleeping for %d', sleep_interval)
             self.event.wait(sleep_interval)
             self.event.clear()
+
+    def reweight(self, device_class, new_weight):
+        osdmap = self.get_osdmap()
+        osdmap_dump = osdmap.dump()
+        crush = osdmap.get_crush()
+        crush_dump = crush.dump()
+        osds = osdmap_dump.get('osds',[])
+        devices = crush_dump['devices']
+        osd_by_device_class = {}
+        device_class = str(device_class)
+        new_weight = float(new_weight)
+
+        if new_weight > 1.0 or new_weight < 0.0:
+            return (-errno.EINVAL, 'Invalid weight %f' % new_weight)
+
+        for device in devices:
+            osd_id = device['id']
+            osd = osds[osd_id]
+            if osd['in'] == 1 and osd['up'] == 1:
+                if device['class'] not in osd_by_device_class:
+                    osd_by_device_class[device['class']] = set()
+                osd_by_device_class[device['class']].add(device['id'])
+            else:
+                self.log.error('skip osd.%d in=%d up=%d' % (osd_id, osd['in'], osd['up']))
+
+        if device_class not in osd_by_device_class:
+            return (-errno.EINVAL, 'Not found osd with device class "%s"' % device_class)
+
+        reweightn = {}
+        for osd in osd_by_device_class[device_class]:
+            reweightn[str(osd)] = str(int(new_weight * float(0x10000)))
+
+        commands = []
+        if len(reweightn):
+            self.log.error('ceph osd reweightn %s', reweightn)
+            result = CommandResult('foo')
+            self.send_command(result, 'mon', '', json.dumps({
+                'prefix': 'osd reweightn',
+                'format': 'json',
+                'weights': json.dumps(reweightn),
+            }), 'foo')
+            commands.append(result)
+
+        self.log.error('commands %s' % commands)
+        for result in commands:
+            r, outb, outs = result.wait()
+            if r != 0:
+                self.log.error('Error on command')
+                return
+        self.log.error('done')
+
+        return (0, '')
 
     def plan_create(self, name):
         plan = Plan(name, MappingState(self.get_osdmap(),
