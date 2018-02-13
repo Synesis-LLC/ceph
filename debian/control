@@ -184,6 +184,16 @@ Description: manager for the ceph distributed storage system
  This package contains the manager daemon, which is used to expose high
  level management and monitoring functionality.
 
+Package: ceph-mgr-modules
+Architecture: all
+Depends: ceph-mgr (= ${binary:Version}),
+Description: manager modules for the ceph distributed storage system
+ Ceph is a massively scalable, open-source, distributed
+ storage system that runs on commodity hardware and delivers object,
+ block and file system storage.
+ .
+ This package contains the manager daemon pluggable modules.
+
 Package: ceph-mgr-dbg
 Architecture: linux-any
 Section: debug
