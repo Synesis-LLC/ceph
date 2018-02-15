@@ -336,7 +336,7 @@ class Module(MgrModule):
     def get_cfg(self, key, device_class=None):
         if device_class:
             if device_class != 'hdd':
-                device_device_classtype = 'ssd'
+                device_class = 'ssd'
             key = key + '_' + device_class
             return self.config_options[key][0](self.get_config(key, self.config_options[key][1]))
         else:
