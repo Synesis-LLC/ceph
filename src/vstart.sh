@@ -24,7 +24,7 @@ if [ -e CMakeCache.txt ]; then
   [ -z "$MGR_PYTHON_PATH" ] && MGR_PYTHON_PATH=$CEPH_ROOT/src/pybind/mgr
 fi
 
-# use CEPH_BUILD_ROOT to vstart from a 'make install' 
+# use CEPH_BUILD_ROOT to vstart from a 'make install'
 if [ -n "$CEPH_BUILD_ROOT" ]; then
         [ -z "$CEPH_BIN" ] && CEPH_BIN=$CEPH_BUILD_ROOT/bin
         [ -z "$CEPH_LIB" ] && CEPH_LIB=$CEPH_BUILD_ROOT/lib
@@ -50,7 +50,7 @@ export PYTHONPATH=$PYBIND:$CEPH_LIB/cython_modules/lib.2:$PYTHONPATH
 export LD_LIBRARY_PATH=$CEPH_LIB:$LD_LIBRARY_PATH
 export DYLD_LIBRARY_PATH=$CEPH_LIB:$DYLD_LIBRARY_PATH
 # Suppress logging for regular use that indicated that we are using a
-# development version. vstart.sh is only used during testing and 
+# development version. vstart.sh is only used during testing and
 # development
 export CEPH_DEV=1
 
@@ -485,7 +485,7 @@ EOF
         log file = $CEPH_OUT_DIR/\$name.\$pid.log
         admin socket = $CEPH_ASOK_DIR/\$name.\$pid.asok
         rgw gc obj min wait = 10
-         
+
 [client.rgw]
         rgw_auto_create_pools = false
 
@@ -557,7 +557,7 @@ $COSDMEMSTORE
 $COSDSHORT
 $extra_conf
 [mon]
-        mgr initial modules = restful status dashboard balancer
+        mgr initial modules = status balancer watcher
         mon pg warn min per osd = 3
         mon osd allow primary affinity = true
         mon reweight min pgs per osd = 4
@@ -647,7 +647,7 @@ EOF
 start_osd() {
     for osd in `seq 0 $((CEPH_NUM_OSD-1))`
     do
-      
+
 	    if [ "$new" -eq 1 ]; then
 		    wconf <<EOF
 [osd.$osd]
@@ -689,9 +689,9 @@ EOF
           fi
           sudo cgcreate -a $USER -t $USER -g $osd_cgroup
           #echo "$osd_read_dev_num     0" | sudo tee /sys/fs/cgroup/blkio/$osd_cgroup_name/blkio.throttle.write_iops_device
-          
+
           run 'osd' $SUDO cgexec -g $osd_cgroup $CEPH_BIN/ceph-osd -i $osd $ARGS $COSD_ARGS
-          
+
           find /sys/fs/cgroup/blkio/$osd_cgroup_name
         else
           run 'osd' $SUDO $CEPH_BIN/ceph-osd -i $osd $ARGS $COSD_ARGS
@@ -739,7 +739,7 @@ EOF
         ceph_adm restful create-key admin -o $SF
         RESTFUL_SECRET=`cat $SF`
         rm $SF
-    else 
+    else
         echo MGR Restful is not working, perhaps the package is not installed?
     fi
 }
@@ -1100,4 +1100,3 @@ if [ "$CEPH_DIR" != "$PWD" ]; then
 fi
 
 echo "CEPH_DEV=1"
-
