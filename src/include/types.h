@@ -322,18 +322,18 @@ struct prettybyte_t {
 inline ostream& operator<<(ostream& out, const prettybyte_t& b)
 {
   uint64_t bump_after = 100;
-  if (b.v > bump_after << 60)
-    return out << (b.v >> 60) << " EB";    
-  if (b.v > bump_after << 50)
-    return out << (b.v >> 50) << " PB";    
-  if (b.v > bump_after << 40)
-    return out << (b.v >> 40) << " TB";    
-  if (b.v > bump_after << 30)
-    return out << (b.v >> 30) << " GB";    
-  if (b.v > bump_after << 20)
-    return out << (b.v >> 20) << " MB";    
-  if (b.v > bump_after << 10)
-    return out << (b.v >> 10) << " kB";
+  if (b.v >= bump_after << 60)
+    return out << (b.v  >> 60) << " EB";
+  if (b.v >= bump_after << 50)
+    return out << (b.v  >> 50) << " PB";
+  if (b.v >= bump_after << 40)
+    return out << (b.v  >> 40) << " TB";
+  if (b.v >= bump_after << 30)
+    return out << (b.v  >> 30) << " GB";
+  if (b.v >= bump_after << 20)
+    return out << (b.v  >> 20) << " MB";
+  if (b.v >= bump_after << 10)
+    return out << (b.v  >> 10) << " kB";
   return out << b.v << " bytes";
 }
 
@@ -346,18 +346,18 @@ struct si_t {
 inline ostream& operator<<(ostream& out, const si_t& b)
 {
   uint64_t bump_after = 100;
-  if (b.v > bump_after << 60)
-    return out << (b.v >> 60) << "E";
-  if (b.v > bump_after << 50)
-    return out << (b.v >> 50) << "P";
-  if (b.v > bump_after << 40)
-    return out << (b.v >> 40) << "T";
-  if (b.v > bump_after << 30)
-    return out << (b.v >> 30) << "G";
-  if (b.v > bump_after << 20)
-    return out << (b.v >> 20) << "M";
-  if (b.v > bump_after << 10)
-    return out << (b.v >> 10) << "k";
+  if (b.v >= bump_after * 1000000000000000000ull)
+    return out << (b.v  / 1000000000000000000ull) << "E";
+  if (b.v >= bump_after * 1000000000000000ull)
+    return out << (b.v  / 1000000000000000ull) << "P";
+  if (b.v >= bump_after * 1000000000000ull)
+    return out << (b.v  / 1000000000000ull) << "T";
+  if (b.v >= bump_after * 1000000000ull)
+    return out << (b.v  / 1000000000ull) << "G";
+  if (b.v >= bump_after * 1000000)
+    return out << (b.v  / 1000000) << "M";
+  if (b.v >= bump_after * 1000)
+    return out << (b.v  / 1000) << "k";
   return out << b.v;
 }
 
@@ -370,18 +370,18 @@ struct pretty_si_t {
 inline ostream& operator<<(ostream& out, const pretty_si_t& b)
 {
   uint64_t bump_after = 100;
-  if (b.v > bump_after << 60)
-    return out << (b.v >> 60) << " E";
-  if (b.v > bump_after << 50)
-    return out << (b.v >> 50) << " P";
-  if (b.v > bump_after << 40)
-    return out << (b.v >> 40) << " T";
-  if (b.v > bump_after << 30)
-    return out << (b.v >> 30) << " G";
-  if (b.v > bump_after << 20)
-    return out << (b.v >> 20) << " M";
-  if (b.v > bump_after << 10)
-    return out << (b.v >> 10) << " k";
+  if (b.v >= bump_after * 1000000000000000000ull)
+    return out << (b.v  / 1000000000000000000ull) << " E";
+  if (b.v >= bump_after * 1000000000000000ull)
+    return out << (b.v  / 1000000000000000ull) << " P";
+  if (b.v >= bump_after * 1000000000000ull)
+    return out << (b.v  / 1000000000000ull) << " T";
+  if (b.v >= bump_after * 1000000000ull)
+    return out << (b.v  / 1000000000ull) << " G";
+  if (b.v >= bump_after * 1000000)
+    return out << (b.v  / 1000000) << " M";
+  if (b.v >= bump_after * 1000)
+    return out << (b.v  / 1000) << " k";
   return out << b.v << " ";
 }
 
@@ -394,14 +394,14 @@ struct kb_t {
 inline ostream& operator<<(ostream& out, const kb_t& kb)
 {
   uint64_t bump_after = 100;
-  if (kb.v > bump_after << 40)
-    return out << (kb.v >> 40) << " PB";    
-  if (kb.v > bump_after << 30)
-    return out << (kb.v >> 30) << " TB";    
-  if (kb.v > bump_after << 20)
-    return out << (kb.v >> 20) << " GB";    
-  if (kb.v > bump_after << 10)
-    return out << (kb.v >> 10) << " MB";
+  if (kb.v >= bump_after << 40)
+    return out << (kb.v  >> 40) << " PB";
+  if (kb.v >= bump_after << 30)
+    return out << (kb.v  >> 30) << " TB";
+  if (kb.v >= bump_after << 20)
+    return out << (kb.v  >> 20) << " GB";
+  if (kb.v >= bump_after << 10)
+    return out << (kb.v  >> 10) << " MB";
   return out << kb.v << " kB";
 }
 
