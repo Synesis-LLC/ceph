@@ -1066,7 +1066,7 @@ do_rgw()
     # Start server
     RGWDEBUG=""
     if [ "$debug" -ne 0 ]; then
-        RGWDEBUG="--debug-rgw=20"
+        RGWDEBUG="--debug-rgw=20 --debug-civetweb=10"
     fi
 
     RGWSUDO=

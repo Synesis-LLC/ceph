@@ -33,13 +33,9 @@ int RGWCivetWebFrontend::process(struct mg_connection*  const conn)
   RGWRequest req(env.store->get_new_req_id());
   int ret = process_request(env.store, env.rest, &req, env.uri_prefix,
                             *env.auth_registry, &client_io, env.olog);
-  if (ret < 0) {
-    /* We don't really care about return code. */
-    dout(20) << "process_request() returned " << ret << dendl;
-  }
+  dout(20) << "process_request() returned " << ret << dendl;
 
-  /* Mark as processed. */
-  return 1;
+  return ret;
 }
 
 int RGWCivetWebFrontend::run()
@@ -90,6 +86,7 @@ int RGWCivetWebFrontend::run()
   cb.begin_request = civetweb_callback;
   cb.log_message = rgw_civetweb_log_callback;
   cb.log_access = rgw_civetweb_log_access_callback;
+  cb.log_err_access = rgw_civetweb_log_err_access_callback;
   ctx = mg_start(&cb, this, options.data());
 
   return ! ctx ? -EIO : 0;

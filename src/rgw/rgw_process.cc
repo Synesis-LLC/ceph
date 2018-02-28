@@ -235,5 +235,5 @@ done:
 	  << " ======"
 	  << dendl;
 
-  return (ret < 0 ? ret : s->err.ret);
+  return http_ret;
 } /* process_request */
