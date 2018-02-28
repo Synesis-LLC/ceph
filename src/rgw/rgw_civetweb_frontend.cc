@@ -108,6 +108,7 @@ int RGWCivetWebFrontend::run()
   cb.begin_request = civetweb_callback;
   cb.log_message = rgw_civetweb_log_callback;
   cb.log_access = rgw_civetweb_log_access_callback;
+  cb.log_err_access = rgw_civetweb_log_err_access_callback;
   ctx = mg_start(&cb, this, options.data());
 
   return ! ctx ? -EIO : 0;
