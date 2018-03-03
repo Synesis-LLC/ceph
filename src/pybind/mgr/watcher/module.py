@@ -296,6 +296,7 @@ class Module(MgrModule):
                 "ssd" : self.cfg['max_compliant_latency_ssd'],
                 "hdd" : self.cfg['max_compliant_latency_hdd'],
             }.get(c, self.cfg['max_compliant_latency'])
+            min_threshold *= self.cfg['window_width']
             self.slow_osds_by_class[c] = self.find_slow_osds(v, min_threshold)
             if len(self.slow_osds_by_class[c]) > 0:
                 continue_process = True
