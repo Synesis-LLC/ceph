@@ -256,7 +256,12 @@ class Module(MgrModule):
             for osd in to_remove:
                 self.log.error("drop osd.%d window" % osd)
                 del self.window[c][osd]
-        self.debug(self.window, "window")
+
+        if self.cfg['enable_debug']:
+            debug_window = {}
+            for dev_type,dev_type_data in self.window.items():
+                debug_window[dev_type] = dict([(osd_id, (len(values), sum(values), min(values), max(values))) for osd_id,values in dev_type_data.items()])
+            self.debug(debug_window, "window")
 
         # calculate sum latencies
         # {class -> [{osd_id -> sum_apply_lat}, {osd_id -> sum_commit_lat}]}
