@@ -350,10 +350,10 @@ class Module(MgrModule):
 
             tmp = {'max_throttled_osds': max_throttled_osds,
                     'slow_osds': slow_osds,
-                    'throttled_osds': throttled_osds,
-                    'out_osds': out_osds}
+                    'throttled_osds': list(throttled_osds),
+                    'out_osds': list(out_osds)}
             self.debug(tmp, "throttling state")
-            self.log.error("throttling state: %s" % json.dumps(tmp))
+            self.log.error("%s throttling state: %s" % (c, json.dumps(tmp)))
 
             # Set primary affinity to 0.0 for limited number of slow osds.
             to_throttle_osds = set(slow_osds) - (throttled_osds | out_osds)
@@ -363,7 +363,7 @@ class Module(MgrModule):
 
                 for osd_id in self.osds_to_trottle:
                     # Drop osd lats windows to collect all new window
-                    self.log.error("drop osd.%d window" % osd)
+                    self.log.error("drop osd.%d window" % osd_id)
                     del self.window[c][osd_id]
             else:
                 self.osds_to_trottle = []
