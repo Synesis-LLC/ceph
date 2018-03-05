@@ -281,6 +281,29 @@ class Module(MgrModule):
         return continue_process
 
 
+    def check_cluster_state(self):
+        unknown = self.pg_status.get('unknown_pgs_ratio', 0.0)
+        degraded = self.pg_status.get('degraded_ratio', 0.0)
+        inactive = self.pg_status.get('inactive_pgs_ratio', 0.0)
+        misplaced = self.pg_status.get('misplaced_ratio', 0.0)
+        self.log.error('unknown %f degraded %f inactive %f misplaced %g',
+                       unknown, degraded, inactive, misplaced)
+        if unknown > 0.0:
+            self.log.error('Some PGs (%f) are unknown; waiting', unknown)
+            return False
+        elif degraded > 0.0:
+            self.log.error('Some objects (%f) are degraded; waiting', degraded)
+            return False
+        elif inactive > 0.0:
+            self.log.error('Some PGs (%f) are inactive; waiting', inactive)
+            return False
+        elif misplaced > 0.0:
+            self.log.error('Some PGs (%f) are misplaced; waiting', misplaced)
+            return False
+
+        return True
+
+
     def recalculate_throttling(self):
         # filter only up and in osds
         # {class -> [{osd_id -> sum_apply_lat}, {osd_id -> sum_commit_lat}]}
@@ -312,25 +335,6 @@ class Module(MgrModule):
         if not continue_process:
             return False
 
-        unknown = self.pg_status.get('unknown_pgs_ratio', 0.0)
-        degraded = self.pg_status.get('degraded_ratio', 0.0)
-        inactive = self.pg_status.get('inactive_pgs_ratio', 0.0)
-        misplaced = self.pg_status.get('misplaced_ratio', 0.0)
-        self.log.error('unknown %f degraded %f inactive %f misplaced %g',
-                       unknown, degraded, inactive, misplaced)
-        if unknown > 0.0:
-            self.log.error('Some PGs (%f) are unknown; waiting', unknown)
-            return
-        elif degraded > 0.0:
-            self.log.error('Some objects (%f) are degraded; waiting', degraded)
-            return
-        elif inactive > 0.0:
-            self.log.error('Some PGs (%f) are inactive; waiting', inactive)
-            return
-        elif misplaced > 0.0:
-            self.log.error('Some PGs (%f) are misplaced; waiting', misplaced)
-            return
-
         self.osds_to_trottle = []
         self.osds_to_out = []
 
@@ -360,11 +364,6 @@ class Module(MgrModule):
             max_throttled_osds -= len(throttled_osds | out_osds)
             if max_throttled_osds > 0:
                 self.osds_to_trottle = list(to_throttle_osds)[:max_throttled_osds]
-
-                for osd_id in self.osds_to_trottle:
-                    # Drop osd lats windows to collect all new window
-                    self.log.error("drop osd.%d window" % osd_id)
-                    del self.window[c][osd_id]
             else:
                 self.osds_to_trottle = []
 
@@ -380,10 +379,14 @@ class Module(MgrModule):
         for osd_id in self.osds_to_trottle:
             self.log.error('drop primary affinity to 0.0 for osd-%d' % osd_id)
             self.do_osd_primary_afinity_sync(osd_id, 0.0)
-        
+            self.log.error("drop osd.%d window" % osd_id)
+            del self.window[self.osd_class[osd_id]][osd_id]
+    
         for osd_id in self.osds_to_out:
             self.log.error('throw out osd-%d' % osd_id)
             self.do_osd_out_sync(osd_id)
+            self.log.error("drop osd.%d window" % osd_id)
+            del self.window[self.osd_class[osd_id]][osd_id]
 
 
     def get_state(self):
@@ -440,18 +443,23 @@ class Module(MgrModule):
                 time.sleep(0.1)
             if not self.serving:
                 break
+
+            self.debug_start()
+            self.debug(self.cfg, 'config')
+            
             self.tick = datetime.datetime.now()
             if not self.cfg['active']:
                 self.window = {}
                 continue
 
-            self.debug_start()
-            self.debug(self.cfg, 'config')
             try:
                 if self.collect_stats():
-                    if self.aggregate_stats():
-                        if self.recalculate_throttling() and not self.cfg['dry_run']:
-                            self.apply_throttling()
+                    if self.check_cluster_state():
+                        if self.aggregate_stats():
+                            if self.recalculate_throttling() and not self.cfg['dry_run']:
+                                self.apply_throttling()
+                    else:
+                        self.window = {}
             except Exception as e:
                 self.debug(e, "process")
                 self.log.error(e.message)
