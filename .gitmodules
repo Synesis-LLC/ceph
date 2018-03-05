@@ -3,7 +3,7 @@
 	url = https://github.com/ceph/ceph-object-corpus.git
 [submodule "src/civetweb"]
 	path = src/civetweb
-	url = https://git.synesis.ru/KipodDependencies/civetweb.git
+	url = git@git.synesis.ru/KipodDependencies/civetweb.git
 	branch = wip-log-access
 [submodule "src/erasure-code/jerasure/jerasure"]
 	path = src/erasure-code/jerasure/jerasure
