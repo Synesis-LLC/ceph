@@ -12,6 +12,7 @@ import time
 from mgr_module import MgrModule, CommandResult
 from threading import Event
 from pprint import pformat
+import numpy as np
 import sys
 
 # available modes: 'none', 'crush', 'crush-compat', 'upmap', 'osd_weight'
@@ -322,15 +323,36 @@ class Module(MgrModule):
         'crush_compat_step' : (float, .5),
         'active' : (bool, '1'),
 
+        'stats_sanity_kb' : (int, 1),
+
+        # max - pull max weight to 1.0
+        # avg - set 0.5 weight for osd with avg usage
+        # none - do not normalize
+        'reweight_normalization_mode' : (str, 'max'),
+        'reweight_normalization_avg_base' : (float, 0.5),
+
         # will do reweight if even one osd weight difference greater than
-        'max_usage_difference_hdd' : (float, .03),
-        'max_usage_difference_ssd' : (float, .03),
+        'max_usage_difference_hdd' : (float, .05),
+        'max_usage_difference_ssd' : (float, .05),
         'abs_max_difference_hdd' : (bool, '1'),
         'abs_max_difference_ssd' : (bool, '1'),
 
-        # max step of weight change for each osd
-        'max_reweight_step_hdd' : (float, .02),
-        'max_reweight_step_ssd' : (float, .02),
+        # min usage_diff and usage_mult to reweight osd
+        'min_osd_usage_diff' : (float, .005), # if avg_usage=0.5 and usage=0.51 than usage_diff=0.01
+        'min_osd_usage_mult_diff' : (float, .01), # if avg_usage=0.5 and usage_diff=0.01 than usage_mult_diff=0.02
+
+        # cv=stddev/mean
+        'cv_max_hdd' : (float, .02),
+        'cv_max_ssd' : (float, .02),
+        # do not reweight if avg usage is lower than
+        'min_avg_usage_hdd' : (float, .05),
+        'min_avg_usage_ssd' : (float, .05),
+
+        # max step of weight change for each osd device class
+        'max_reweight_step_inc_hdd' : (float, .02),
+        'max_reweight_step_dec_hdd' : (float, .02),
+        'max_reweight_step_inc_ssd' : (float, .02),
+        'max_reweight_step_dec_ssd' : (float, .02),
     }
 
     def get_cfg(self, key, device_class=None):
@@ -775,7 +797,6 @@ class Module(MgrModule):
                 self.log.error('Unrecognized mode %s' % plan.mode)
         return False
 
-        ##
 
     def do_upmap(self, plan):
         self.log.info('do_upmap')
@@ -973,13 +994,18 @@ class Module(MgrModule):
             return False
 
 
-    def calculate_optimal_weight(self, osds, device_class):
+    def calculate_optimal_weight(self, osds, device_class, stats):
         self.log.error(device_class + ': calculate optimal weight %d' % len(osds))
+
+        norm_mode = self.get_cfg('reweight_normalization_mode')
+        norm_avg_base = self.get_cfg('reweight_normalization_avg_base')
+
         # calculate usage, average usage, min and max usage
         total_used = 0
         total_size = 0
         total_avail = 0
-        for osd_id,osd in osds.iteritems():
+        usages = []
+        for _,osd in osds.iteritems():
             used = 1.0 * osd['used']
             size = 1.0 * osd['size']
             avail = 1.0 * osd['avail']
@@ -988,34 +1014,54 @@ class Module(MgrModule):
             total_avail += avail
             usage = used/size
             osd['usage'] = usage
+            usages.append(usage)
 
         if total_size == 0:
             self.log.error('Total size is zero')
             return False
 
         avg_usage = total_used/total_size
+        stats['avg_usage'] = avg_usage
+        stats['mean'] = np.mean(usages)
+        stats['stddev'] = np.std(usages)
+        stats['cv'] = stats['stddev'] / stats['mean']
 
         self.log.error(device_class + ': total_size=%d, total_used=%d, total_avail=%d' % (total_size, total_used, total_avail))
-        self.log.error(device_class + ': avg_usage=%f' % avg_usage)
+        self.log.error(device_class + ': avg_usage=%f, mean=%f, std=%f, cv=%f' % (avg_usage, stats['mean'], stats['stddev'], stats['cv']))
 
         # calculate usage difference
-        for osd_id,osd in osds.iteritems():
+        for _,osd in osds.iteritems():
             osd['usage_diff'] = osd['usage'] - avg_usage
             osd['usage_mult'] = osd['usage'] / avg_usage
 
         # calculate some kind of optimal weight
         max_optimal_weight = 0.0
-        for osd_id,osd in osds.iteritems():
+        avg_optimal_weight = 0.0
+        for _,osd in osds.iteritems():
             optimal_weight = osd['current_weight'] * avg_usage / osd['usage']
             osd['optimal_weight'] = optimal_weight
+            avg_optimal_weight += optimal_weight
             if max_optimal_weight < optimal_weight:
                 max_optimal_weight = optimal_weight
+        avg_optimal_weight /= len(osds)
 
         self.log.error(device_class + ': max_optimal_weight=%f' % max_optimal_weight)
 
-        # normalize optimal_weight for max=1.0 with saved relative ratio
-        for osd_id,osd in osds.iteritems():
-            osd['optimal_weight'] = osd['optimal_weight'] / max_optimal_weight
+        if norm_mode == 'max':
+            # normalize optimal_weight for max=1.0 with saved relative ratio
+            for _,osd in osds.iteritems():
+                osd['optimal_weight'] = osd['optimal_weight'] / max_optimal_weight
+        elif norm_mode == 'avg':
+            # normalize optimal_weight for avg=norm_avg_base with saved relative ratio
+            for _,osd in osds.iteritems():
+                osd['optimal_weight'] = osd['optimal_weight'] / avg_optimal_weight * norm_avg_base
+        elif norm_mode == 'none':
+            pass
+        else:
+            self.log.error('Unknown normalization mode "%s", skip step' % norm_mode)
+            return False
+
+        for _,osd in osds.iteritems():
             osd['reweight_step'] = osd['optimal_weight'] - osd['current_weight']
 
         return True
@@ -1023,22 +1069,35 @@ class Module(MgrModule):
 
     def calculate_reweights(self, osds, device_class):
         self.log.error(device_class + ': calculate reweights %d' % len(osds))
-        if not self.calculate_optimal_weight(osds, device_class):
+        stats = {}
+        if not self.calculate_optimal_weight(osds, device_class, stats):
             return {}
 
         max_usage_difference = self.get_cfg('max_usage_difference', device_class)
         abs_max_difference = self.get_cfg('abs_max_difference', device_class)
-        max_reweight_step = self.get_cfg('max_reweight_step', device_class)
+        max_reweight_step_inc = self.get_cfg('max_reweight_step_inc', device_class)
+        max_reweight_step_dec = self.get_cfg('max_reweight_step_dec', device_class)
+        cv_max = self.get_cfg('cv_max', device_class)
+        min_avg_usage = self.get_cfg('min_avg_usage', device_class)
+        min_osd_usage_diff = self.get_cfg('min_osd_usage_diff')
+        min_osd_usage_mult_diff = self.get_cfg('min_osd_usage_mult_diff')
+
+        do_reweight = False
 
         # check if exists osds with usage over max_usage_difference
-        do_reweight = False
-        for osd_id,osd in osds.iteritems():
-            if abs_max_difference:
-                if abs(osd['usage_diff']) > max_usage_difference:
-                    do_reweight = True
-            else:
-                if osd['usage_diff'] > max_usage_difference:
-                    do_reweight = True
+        if not do_reweight:
+            for osd_id,osd in osds.iteritems():
+                if abs_max_difference:
+                    if abs(osd['usage_diff']) > max_usage_difference:
+                        do_reweight = True
+                else:
+                    if osd['usage_diff'] > max_usage_difference:
+                        do_reweight = True
+
+        # check if cv is exceeded
+        if not do_reweight and stats['avg_usage'] > min_avg_usage:
+            if stats['cv'] > cv_max:
+                do_reweight = True
 
         if not do_reweight:
             self.log.error(device_class + ': all osd usage difference under %f' % max_usage_difference)
@@ -1046,30 +1105,39 @@ class Module(MgrModule):
 
         # normalize reweight_step
         max_abs_reweight_step = max([abs(el[1]['reweight_step']) for el in osds.iteritems()])
-        step_scale = max_reweight_step / max_abs_reweight_step
-        self.log.error(device_class + ': max_abs_reweight_step=%f, step_scale=%f' % (max_abs_reweight_step, step_scale))
+        step_scale_inc = max_reweight_step_inc / max_abs_reweight_step
+        step_scale_dec = max_reweight_step_dec / max_abs_reweight_step
+        self.log.error(device_class + ': max_abs_reweight_step=%f, step_scale_inc=%f, step_scale_dec=%f' % (max_abs_reweight_step, step_scale_inc, step_scale_dec))
 
         new_weights = {}
         # apply reweight step to current weights
         for osd_id,osd in osds.iteritems():
-            reweight_step = osd['reweight_step']
-            if step_scale < 1.0:
-                reweight_step *= step_scale
-            target_weight = osd['current_weight'] + reweight_step
-            target_weight = min(target_weight, 1.0)
-            if target_weight != osd['current_weight']:
-                new_weights[osd_id] = target_weight
-                self.log.error(device_class + ': osd.%d (%f, %f, %f, %f) %f -> %f' % 
-                               (osd_id,
-                                osd['usage'], osd['usage_diff'], osd['optimal_weight'], osd['reweight_step'], 
-                                osd['current_weight'], target_weight))
-
+            if abs(osd['usage_diff']) > min_osd_usage_diff or abs(osd['usage_mult'] - 1.0) > min_osd_usage_mult_diff:
+                reweight_step = osd['reweight_step']
+                if reweight_step >= 0:
+                    if step_scale_inc < 1.0:
+                        reweight_step *= step_scale_inc
+                else:
+                    if step_scale_dec < 1.0:
+                        reweight_step *= step_scale_dec
+                target_weight = osd['current_weight'] + reweight_step
+                target_weight = min(target_weight, 1.0)
+                if target_weight != osd['current_weight']:
+                    new_weights[osd_id] = target_weight
+                    self.log.error(device_class + ': osd.%d (%f, %f, %f, %f) %f -> %f' %
+                                (osd_id,
+                                    osd['usage'], osd['usage_diff'], osd['optimal_weight'], osd['reweight_step'],
+                                    osd['current_weight'], target_weight))
+            else:
+                self.log.error(device_class + ': osd.%d (%f, %f, %f, %f) skipped for small usage diff' %
+                            (osd_id,
+                                osd['usage'], osd['usage_diff'], osd['optimal_weight'], osd['reweight_step']))
         return new_weights
 
 
     def collect_osd_by_class(self, plan):
         ms = plan.initial
-        
+
         # convert list to dict by osd_id
         osd_stats = ms.pg_dump.get('osd_stats')
         if not osd_stats:
@@ -1081,6 +1149,8 @@ class Module(MgrModule):
         stats_by_osd = {}
         for stat in osd_stats:
             stats_by_osd[stat['osd']] = stat
+
+        stats_sanity_kb = self.get_cfg('stats_sanity_kb')
 
         # group osds by device_class and filter up and in osds
         insane_stats = False
@@ -1101,7 +1171,7 @@ class Module(MgrModule):
                         'size'  : stat['kb'],
                         'current_weight' : osd['weight'],
                     }
-                    if stat['kb'] != (stat['kb_used'] + stat['kb_avail']):
+                    if abs(stat['kb'] - (stat['kb_used'] + stat['kb_avail'])) > stats_sanity_kb:
                         self.log.error('skip plan, insane stats: osd.%d : size=%d, avail=%d, used=%d' 
                                       % (osd_id, stat['kb'], stat['kb_avail'], stat['kb_used']))
                         insane_stats = True
@@ -1109,7 +1179,7 @@ class Module(MgrModule):
                     self.log.error('no stats osd.%d' % osd_id)
             else:
                 self.log.error('skip osd.%d in=%d up=%d' % (osd_id, osd['in'], osd['up']))
-        
+
         return not insane_stats
 
 
