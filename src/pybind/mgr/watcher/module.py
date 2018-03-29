@@ -1,9 +1,10 @@
 
 import cherrypy
+import errno
 import time
 import json
 from mgr_module import MgrModule, CommandResult
-import pprint
+from pprint import pformat
 import threading
 import datetime
 import math
@@ -55,6 +56,16 @@ class Module(MgrModule):
             "desc": "Disable debug",
             "perm": "rw",
         },
+        {
+            "cmd": "watcher set name=key,type=CephString, name=value,type=CephString",
+            "desc": "Set config value",
+            "perm": "rw",
+        },
+        {
+            "cmd": "watcher init-cfg",
+            "desc": "Initialize config-key options",
+            "perm": "rw",
+        },
     ]
 
     def handle_command(self, command):
@@ -63,43 +74,209 @@ class Module(MgrModule):
             return (0, json.dumps(self.get_state(), indent=2), '')
 
         elif command['prefix'] == 'watcher on':
-            if not self.cfg['active']:
-                self.set_config('active', '1')
-                self.cfg['active'] = True
+            self.cfg_enable('active')
             return (0, '', '')
 
         elif command['prefix'] == 'watcher off':
-            if self.cfg['active']:
-                self.set_config('active', '')
-                self.cfg['active'] = False
+            self.cfg_disable('active')
             return (0, '', '')
 
         elif command['prefix'] == 'watcher mute':
-            if not self.cfg['dry_run']:
-                self.set_config('dry_run', '1')
-                self.cfg['dry_run'] = True
+            self.cfg_enable('dry_run')
             return (0, '', '')
 
         elif command['prefix'] == 'watcher unmute':
-            if self.cfg['dry_run']:
-                self.set_config('dry_run', '')
-                self.cfg['dry_run'] = False
+            self.cfg_disable('dry_run')
             return (0, '', '')
 
         elif command['prefix'] == 'watcher debug on':
-            if not self.cfg['enable_debug']:
-                self.set_config('enable_debug', '1')
-                self.cfg['enable_debug'] = True
+            self.cfg_enable('enable_debug')
             return (0, '', '')
 
         elif command['prefix'] == 'watcher debug off':
-            if self.cfg['enable_debug']:
-                self.set_config('enable_debug', '')
-                self.cfg['enable_debug'] = False
+            self.cfg_disable('enable_debug')
+            return (0, '', '')
+
+        elif command['prefix'] == 'watcher set':
+            key = str(command['key'])
+            value = str(command['value'])
+            if key in self.cfg:
+                self.cfg_set_str(key, value)
+                return (0, '', '')
+            else:
+                return (-errno.EINVAL, '', 'key "%s" not found in config' % key)
+
+        elif command['prefix'] == 'watcher reset':
+            key = str(command['key'])
+            if key in self.cfg:
+                self.cfg_reset(key)
+                return (0, '', '')
+            else:
+                return (-errno.EINVAL, '', 'key "%s" not found in config' % key)
+
+        elif command['prefix'] == 'watcher init-cfg':
+            self.init_cfg()
             return (0, '', '')
 
         else:
             return (-errno.EINVAL, '', "Command not found '{0}'".format(command['prefix']))
+
+    config_options = {
+        'server_addr' : (str, '::'),
+        'server_port' : (int, 9284),
+
+        'active' : (bool, DEFAULT_ACTIVE),
+        'enable_debug' : (bool, DEFAULT_DEBUG),
+        'dry_run' : (bool, False),
+
+        # process stats every 5 seconds
+        'period' : (int, 5),
+        # width of window in periods
+        # if stats not contain osd then collected stats will be deleted
+        # so there is no need to control timestamps of stats values
+        'window_width' : (int, 5*12),
+
+        'dump_latency' : (bool, False),
+        'dump_latency_filename' : (str, "/tmp/ceph_osd_latencies.json"),
+
+        'default_device_class' : (str, 'hdd'),
+
+        'hdd' : {
+            'pri_aff' : {
+                'active' : (bool, True),
+                'max_compliant_latency' : (float, 50),
+                'avg_latency_threshold' : (float, 5.0),
+                'min_latency_threshold' : (float, 1.0),
+                'latest_latency_threshold' : (float, 5.0),
+                'max_throttled_osds' : (float, 0.05),
+                'max_osds_sanity_check' : (float, 0.1),
+            },
+            'out' : {
+                'active' : (bool, False),
+                'max_compliant_latency' : (float, 50),
+                'avg_latency_threshold' : (float, 10.0),
+                'min_latency_threshold' : (float, 2.0),
+                'latest_latency_threshold' : (float, 10.0),
+                'max_throttled_osds' : (float, 0.02),
+                'max_osds_sanity_check' : (float, 0.1),
+            }
+        },
+
+        'ssd' : {
+            'pri_aff' : {
+                'active' : (bool, True),
+                'max_compliant_latency' : (float, 5),
+                'avg_latency_threshold' : (float, 5.0),
+                'min_latency_threshold' : (float, 1.0),
+                'latest_latency_threshold' : (float, 5.0),
+                'max_throttled_osds' : (float, 0.05),
+                'max_osds_sanity_check' : (float, 0.1),
+            },
+            'out' : {
+                'active' : (bool, False),
+                'max_compliant_latency' : (float, 5),
+                'avg_latency_threshold' : (float, 10.0),
+                'min_latency_threshold' : (float, 2.0),
+                'latest_latency_threshold' : (float, 10.0),
+                'max_throttled_osds' : (float, 0.02),
+                'max_osds_sanity_check' : (float, 0.1),
+            }
+        }
+    }
+
+    def cfg_enable(self, key):
+        self.cfg[key] = True
+        self.cfg_write(key, True)
+
+    def cfg_disable(self, key):
+        self.cfg[key] = False
+        self.cfg_write(key, False)
+
+    def get_conf_spec(self, key):
+        keys = key.split('.')
+        spec = self.config_options
+        for k in keys:
+            if isinstance(spec, dict) and k in spec:
+                spec = spec[k]
+            else:
+                return None
+        return spec
+
+    def cfg_get(self, *keys):
+        key = '.'.join(keys)
+        return self.cfg.get(key, None)
+
+    def cfg_get_section(self, *section_path):
+        prefix = '.'.join(section_path)
+        section = {}
+        for k,v in self.cfg.items():
+            if k.startswith(prefix):
+                key = k[len(prefix)+1:]
+                section[key] = v
+        return section
+
+    def cfg_write(self, key, value):
+        if key in self.cfg:
+            if isinstance(value, bool):
+                value = '1' if value else ''
+            else:
+                value = str(value)
+            self.set_config(key, value)
+
+    def cfg_set_str(self, key, str_value):
+        if key in self.cfg:
+            spec = self.get_conf_spec(key)
+            if spec is not None:
+                self.cfg[key] = spec[0](str_value)
+                self.set_config(key, str_value)
+
+    def cfg_reset(self, key):
+        if key in self.cfg:
+            spec = self.get_conf_spec(key)
+            if spec is not None:
+                self.cfg[key] = spec[1]
+                self.cfg_write(key, spec[1])
+
+    def list_config_options(self, root=None, prefix=None):
+        if root is None:
+            root = self.config_options
+
+        d = {}
+        for k,v in root.items():
+            if prefix is not None:
+                key = prefix + '.' + k
+            else:
+                key = k
+            if isinstance(v, dict):
+                d1 = self.list_config_options(v, key)
+                for k1,v1 in d1.items():
+                    d[k1] = v1
+            else:
+                d[key] = v
+        return d
+
+    def init_cfg(self):
+        self.log.info('Initializing config options')
+
+        for key,value in self.cfg.items():
+            v = self.get_config(key, None)
+            if v is None or value != v:
+                self.cfg_write(key, value)
+
+        for key,value in self.cfg.items():
+            self.log.info('cfg: %s = %s' % (key, pformat(value)))
+
+    def load_config(self):
+        for key,spec in self.list_config_options().items():
+            value = self.get_config(key, None)
+            if value is None:
+                self.cfg[key] = spec[1]
+            else:
+                self.cfg[key] = spec[0](value)
+
+        for key,value in self.cfg.items():
+            self.log.info('cfg: %s = %s' % (key, pformat(value)))
+
 
     def __init__(self, *args, **kwargs):
         super(Module, self).__init__(*args, **kwargs)
@@ -111,7 +288,7 @@ class Module(MgrModule):
         self.debug_str = "starting"
         self.elapsed = datetime.timedelta()
         self.window = {}
-        self.sum_lats = {}
+        self.avg_lats = {}
         self.osd_state = {}
         self.slow_osds_by_class = {}
         _global_instance['plugin'] = self
@@ -149,25 +326,7 @@ class Module(MgrModule):
 
     def debug(self, obj, label=""):
         if self.cfg['enable_debug']:
-            self.debug_str = label + "\n" + pprint.pformat(obj) + "\n" + "-" * 100 + "\n" + self.debug_str
-
-
-    def find_slow_osds(self, lats, min_threshold):
-        if len(lats) < 3:
-            return {}
-
-        avg_lat = sum(lats.values()) / len(lats)
-        latency_limit_mult = self.cfg['latency_limit_mult']
-        latency_threshold = max(avg_lat * latency_limit_mult, min_threshold)
-
-        self.debug((avg_lat, latency_limit_mult, min_threshold, latency_threshold, lats), "find_osds_to_throttle")
-
-        throttles = []
-        for osd,lat in lats.items():
-            if lat > latency_threshold:
-                throttles.append(osd)
-
-        return throttles
+            self.debug_str = label + "\n" + pformat(obj) + "\n" + "-" * 100 + "\n" + self.debug_str
 
 
     def collect_stats(self):
@@ -197,11 +356,11 @@ class Module(MgrModule):
             with open(self.cfg['dump_latency_filename'], "a+") as dumpfile:
                 dumpfile.write(json.dumps({"apply":self.osd_apply_lats, "commit":self.osd_commit_lats}))
                 dumpfile.write("\n")
-        
+
         self.osd_lats = {}
         for osd_id in set(self.osd_apply_lats.keys()) | set(self.osd_commit_lats.keys()):
             self.osd_lats[osd_id] = max(self.osd_apply_lats.get(osd_id, 0), self.osd_commit_lats.get(osd_id, 0))
-        
+
         self.log.error("osd lats %d" % len(self.osd_lats))
 
         return True
@@ -231,7 +390,7 @@ class Module(MgrModule):
             self.debug(e, "aggregate_stats 2")
             self.log.error(e.message)
             return False
-        
+
         self.log.error("osd by class: " + ", ".join(["%s:%d" % (c, len(v)) for c,v in self.osd_state.items()]))
 
         # update latency window
@@ -264,19 +423,23 @@ class Module(MgrModule):
             self.debug(debug_window, "window")
 
         # calculate sum latencies
-        # {class -> [{osd_id -> sum_apply_lat}, {osd_id -> sum_commit_lat}]}
-        self.sum_lats = {}
+        self.avg_lats = {}
+        self.min_lats = {}
+        self.latest_lats = {}
         continue_process = False
         for osd,c in self.osd_class.items():
-            if c not in self.sum_lats:
-                self.sum_lats[c] = {}
+            if c not in self.avg_lats:
+                self.avg_lats[c] = {}
+                self.min_lats[c] = {}
+                self.latest_lats[c] = {}
             # prevent reweights before collected stats, for example on startup of plugin or osd
             if osd not in self.window[c]:
                 continue
             if len(self.window[c][osd]) == self.cfg['window_width']:
-                self.sum_lats[c][osd] = float(sum(self.window[c][osd]))
+                self.avg_lats[c][osd] = float(sum(self.window[c][osd])) / len(self.window[c][osd])
+                self.min_lats[c][osd] = float(min(self.window[c][osd]))
+                self.latest_lats[c][osd] = float(self.window[c][osd][-1])
                 continue_process = True
-        #self.debug(self.sum_lats, "sum latency")
 
         return continue_process
 
@@ -303,74 +466,88 @@ class Module(MgrModule):
 
         return True
 
+    def filter_osds(self):
+        osds = {}
+        for c,v in self.avg_lats.items():
+            osds[c] = []
+            for osd,_ in v.items():
+                if self.osd_state[c][osd]['in'] == 1 and self.osd_state[c][osd]['up'] == 1:
+                    osds[c].append(osd)
+        return osds
+
+
+    def find_slow_osds(self, c, osds, params, throttled_osds):
+        if len(osds) < 3:
+            return []
+
+        active = params['active']
+        if not active:
+            return []
+
+        avg_lat = sum(self.avg_lats[c].values()) / len(self.avg_lats[c])
+
+        max_compliant_latency = params['max_compliant_latency']
+        avg_latency_threshold = params['avg_latency_threshold'] * avg_lat
+        min_latency_threshold = params['min_latency_threshold'] * avg_lat
+        latest_latency_threshold = params['latest_latency_threshold'] * avg_lat
+
+        self.debug((avg_lat, max_compliant_latency, avg_latency_threshold, min_latency_threshold, latest_latency_threshold), "find_slow_osds")
+
+        throttles = []
+        for osd,lat in self.avg_lats[c].items():
+            if lat <= max_compliant_latency:
+                continue
+            min_latency = self.min_lats[c][osd]
+            latest = self.latest_lats[c][osd]
+            if lat > avg_latency_threshold and min_latency > min_latency_threshold and latest > latest_latency_threshold:
+                throttles.append(osd)
+
+        all_osds = self.osd_state[c]
+        sanity_check_max_osds = int(len(all_osds)*params['max_osds_sanity_check'])
+
+        if len(throttles) > sanity_check_max_osds:
+            msg = "Throttling algorithm found too many \"%s\" osds %d than allowed %d, please verify module configuration." % \
+                    (c, len(throttles), sanity_check_max_osds)
+            self.debug(throttles, msg)
+            self.log.error(msg)
+            return []
+
+        max_throttled_osds = int(len(all_osds)*params['max_throttled_osds'])
+
+        if len(throttled_osds) > max_throttled_osds:
+            return []
+
+        to_throttle_osds = set(throttles) - set(throttled_osds)
+        max_throttled_osds -= len(throttled_osds)
+        if max_throttled_osds > 0:
+            return list(to_throttle_osds)[:max_throttled_osds]
+        else:
+            return []
+
 
     def recalculate_throttling(self):
-        # filter only up and in osds
-        # {class -> [{osd_id -> sum_apply_lat}, {osd_id -> sum_commit_lat}]}
-        lats = {}
-        for c,v in self.sum_lats.items():
-            lats[c] = {}
-            for osd,lat in v.items():
-                if self.osd_state[c][osd]['in'] == 1 and self.osd_state[c][osd]['up'] == 1:
-                    lats[c][osd] = lat
-        self.debug(lats, 'filtered sum latencies')
-
-        # calculate new throttles with min_latency according to osd class
-        self.slow_osds_by_class = {}
-
-        continue_process = False
-        for c,v in lats.items():
-            min_threshold = {
-                "ssd" : self.cfg['max_compliant_latency_ssd'],
-                "hdd" : self.cfg['max_compliant_latency_hdd'],
-            }.get(c, self.cfg['max_compliant_latency'])
-            min_threshold *= self.cfg['window_width']
-            self.slow_osds_by_class[c] = self.find_slow_osds(v, min_threshold)
-            if len(self.slow_osds_by_class[c]) > 0:
-                continue_process = True
-
-        self.debug(self.slow_osds_by_class, 'slow_osds_by_class')
-        self.log.error("slow_osds_by_class: %s" % json.dumps(self.slow_osds_by_class))
-
-        if not continue_process:
-            return False
+        osds_by_class = self.filter_osds()
+        self.debug(osds_by_class, 'filtered osds')
 
         self.osds_to_trottle = []
         self.osds_to_out = []
-
-        for c,slow_osds in self.slow_osds_by_class.items():
+        for c,osds in osds_by_class.items():
             all_osds = self.osd_state[c]
-            max_throttled_osds = int(len(all_osds)*self.cfg['max_throttled_osds'])
-            sanity_check_max_osds = int(len(all_osds)*self.cfg['max_osds_to_throttle_sanity_check'])
-            out_osds = set([osd_id for osd_id, osd in all_osds.items() if osd['in'] == 0])
-            throttled_osds = set([osd_id for osd_id, osd in all_osds.items() if osd['primary_affinity'] == 0.0])
+            out_osds = [osd_id for osd_id, osd in all_osds.items() if osd['in'] == 0]
+            throttled_osds = [osd_id for osd_id, osd in all_osds.items() if osd['primary_affinity'] == 0.0]
 
-            if len(slow_osds) > sanity_check_max_osds:
-                msg = "Throttling algorithm found too many \"%s\" osds %d than allowed %d, please verify module configuration." % \
-                        (c, len(slow_osds), sanity_check_max_osds)
-                self.debug(slow_osds, msg)
-                self.log.error(msg)
-                continue
+            osds_to_trottle = self.find_slow_osds(c, osds, self.cfg_get_section(c, 'pri_aff'), set(throttled_osds) | set(out_osds))
 
-            tmp = {'max_throttled_osds': max_throttled_osds,
-                    'slow_osds': slow_osds,
-                    'throttled_osds': list(throttled_osds),
+            osds_to_out = self.find_slow_osds(c, osds, self.cfg_get_section(c, 'out'), out_osds)
+
+            tmp = {'throttled_osds': list(throttled_osds),
                     'out_osds': list(out_osds)}
             self.debug(tmp, "throttling state")
-            self.log.error("%s throttling state: %s" % (c, json.dumps(tmp)))
+            self.log.error("%s: throttling state: %s" % (c, json.dumps(tmp)))
+            self.log.error("%s: selected osds: pri_aff: %s, out: %s" % (c, json.dumps(osds_to_trottle), json.dumps(osds_to_out)))
 
-            # Set primary affinity to 0.0 for limited number of slow osds.
-            to_throttle_osds = set(slow_osds) - (throttled_osds | out_osds)
-            max_throttled_osds -= len(throttled_osds | out_osds)
-            if max_throttled_osds > 0:
-                self.osds_to_trottle = list(to_throttle_osds)[:max_throttled_osds]
-            else:
-                self.osds_to_trottle = []
-
-            # Set primary affinity to 0.0 did not help - thorw osd out.
-            self.osds_to_out = list(set(slow_osds) & throttled_osds)
-
-            self.debug((self.osds_to_trottle, self.osds_to_out), "throttling attempt")
+            self.osds_to_trottle += osds_to_trottle
+            self.osds_to_out += osds_to_out
 
         return len(self.osds_to_trottle) > 0 or len(self.osds_to_out) > 0
 
@@ -381,7 +558,7 @@ class Module(MgrModule):
             self.do_osd_primary_afinity_sync(osd_id, 0.0)
             self.log.error("drop osd.%d window" % osd_id)
             del self.window[self.osd_class[osd_id]][osd_id]
-    
+
         for osd_id in self.osds_to_out:
             self.log.error('throw out osd-%d' % osd_id)
             self.do_osd_out_sync(osd_id)
@@ -391,47 +568,12 @@ class Module(MgrModule):
 
     def get_state(self):
         return {
-            "elapsed": pprint.pformat(self.elapsed),
+            "elapsed": pformat(self.elapsed),
             "serving": self.serving,
             "slow_osd_by_class": self.slow_osds_by_class,
             "osd_state": self.osd_state,
-            "sum_lats": self.sum_lats
+            "avg_lats": self.avg_lats
         }
-
-
-    def ld_cfg(self, name, type=str, default=""):
-        self.cfg[name] = type(self.get_config(name, default))
-
-    def load_config(self):
-        self.ld_cfg('server_addr', str, '::')
-        self.ld_cfg('server_port', int, 9284)
-
-        self.ld_cfg('active', bool, DEFAULT_ACTIVE)
-        self.ld_cfg('enable_debug', bool, DEFAULT_DEBUG)
-        self.ld_cfg('dry_run', bool, False)
-
-        # process stats every 5 seconds
-        self.ld_cfg('period', int, 5)
-        # width of window in periods
-        # if stats not contain osd then collected stats will be deleted
-        # so there is no need to control timestamps of stats values
-        self.ld_cfg('window_width', int, 5*12)
-
-        # maximum absolute latency value when osd will not be reweighted    
-        self.ld_cfg('max_compliant_latency', float, 50)
-        self.ld_cfg('max_compliant_latency_ssd', float, 5)
-        self.ld_cfg('max_compliant_latency_hdd', float, 50)
-
-        # Sum of latency on window limit compared to avg
-        self.ld_cfg('latency_limit_mult', float, 5.0)
-
-        # limit max number of throttled osds of each 
-        self.ld_cfg('max_throttled_osds', float, 0.05)
-
-        self.ld_cfg('max_osds_to_throttle_sanity_check', float, 0.2)
-
-        self.ld_cfg('dump_latency', bool, False)
-        self.ld_cfg('dump_latency_filename', str, "/tmp/ceph_osd_latencies.json")
 
 
     def process(self):
@@ -446,7 +588,7 @@ class Module(MgrModule):
 
             self.debug_start()
             self.debug(self.cfg, 'config')
-            
+
             self.tick = datetime.datetime.now()
             if not self.cfg['active']:
                 self.window = {}
