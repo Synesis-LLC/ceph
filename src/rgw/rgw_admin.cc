@@ -86,7 +86,7 @@ void usage()
   cout << "  bucket reshard             reshard bucket\n";
   cout << "  bucket sync disable        disable bucket sync\n";
   cout << "  bucket sync enable         enable bucket sync\n";
-  cout << "  bucket lc-conf             enable bucket sync\n";
+  cout << "  bucket lc-conf             show bucket lifecycle config\n";
   cout << "  bi get                     retrieve bucket index object entries\n";
   cout << "  bi put                     store bucket index object entries\n";
   cout << "  bi list                    list raw bucket index entries\n";
@@ -207,6 +207,7 @@ void usage()
   cout << "   --uid=<id>                user id\n";
   cout << "   --subuser=<name>          subuser name\n";
   cout << "   --access-key=<key>        S3 access key\n";
+  cout << "   --max-entries             max number of elements in any list operation, default 1000\n";
   cout << "   --email=<email>\n";
   cout << "   --secret/--secret-key=<key>\n";
   cout << "                             specify secret key\n";
