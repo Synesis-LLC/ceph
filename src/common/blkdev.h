@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <string>
+#include <map>
 
 /* for testing purposes */
 extern void set_block_device_sandbox_dir(const char *dir);
@@ -30,5 +31,7 @@ extern bool block_device_is_rotational(const char *devname);
 extern int block_device_model(const char *devname, char *model, size_t max);
 
 extern std::vector<std::string> get_block_device_slaves(const char *devname);
+
+extern std::map<std::string, std::string> get_block_device_udev_properties(const std::string& maj_min);
 
 #endif

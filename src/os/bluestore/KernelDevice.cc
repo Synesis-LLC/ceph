@@ -243,12 +243,6 @@ int KernelDevice::collect_metadata(string prefix, map<string,string> *pm) const
         (*pm)[prefix + "dev_node"] = string(dev_node);
         (*pm)[prefix + "dev"] = get_dev_property(dev_node, "dev");
 
-        // nvme exposes a serial number
-        string serial = get_dev_property(dev_node, "device/serial");
-        if (serial.length()) {
-          (*pm)[prefix + "serial"] = serial;
-        }
-
         // lvm device has dm/* structure
         string dm_name = get_dev_property(dev_node, "dm/name");
         if (dm_name.length()) {
@@ -261,13 +255,39 @@ int KernelDevice::collect_metadata(string prefix, map<string,string> *pm) const
         // if lvm - change dev_node to underlined device name
         if (dm_name.length()) {
           auto slaves = get_block_device_slaves(dev_node);
+          (*pm)[prefix + "slaves_count"] = slaves.size();
           if (slaves.size() > 0) {
-            // WARN: use only first slave from list
             strncpy(dev_node, slaves[0].c_str(), PATH_MAX);
+            prefix += "physical_disk_";
+            (*pm)[prefix + "dev_node"] = string(dev_node);
+            std::string dev_maj_min = get_dev_property(dev_node, "dev");
+            (*pm)[prefix + "dev"] = dev_maj_min;
+
+            auto udev_props = get_block_device_udev_properties(dev_maj_min);
+            static std::list<std::string> required_props {
+              "ID_MODEL",
+              "ID_SERIAL",
+              "ID_SERIAL_SHORT",
+              "ID_REVISION"
+            };
+            if (udev_props.size() > 0) {
+              for (const auto& prop_name : required_props) {
+                auto p = udev_props.find(prop_name);
+                if (p != udev_props.end()) {
+                  (*pm)[prefix + prop_name] = p->second;
+                }
+              }
+            }
           }
         }
 
         (*pm)[prefix + "model"] = get_dev_property(dev_node, "device/model");
+
+        // nvme exposes a serial number
+        string serial = get_dev_property(dev_node, "device/serial");
+        if (serial.length()) {
+          (*pm)[prefix + "serial"] = serial;
+        }
 
         // nvme has a device/device/* structure; infer from that.  there
         // is probably a better way?

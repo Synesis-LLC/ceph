@@ -15,6 +15,9 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include "include/uuid.h"
+#include <fstream>
+#include <iostream>
+#include <boost/container/string.hpp>
 
 #ifdef __linux__
 #include <linux/fs.h>
@@ -147,6 +150,47 @@ std::vector<std::string> get_block_device_slaves(const char *devname)
   }
 
   return std::move(result);
+}
+
+/**
+ * get properties of block device from udev
+ *
+ * return map of E elements
+ */
+std::map<std::string, std::string> get_block_device_udev_properties(const std::string& maj_min)
+{
+  std::map<std::string, std::string> result;
+  std::string path = "/run/udev/data/b";
+  path += maj_min;
+
+  std::ifstream f;
+  f.open(path);
+  if (!f.is_open()) {
+    return result;
+  }
+  try {
+    while (!f.eof()) {
+      std::string line;
+      getline(f, line);
+      if (line.size() < 5 || line[0] != 'E' || line[1] != ':') {
+        continue;
+      }
+      size_t eq_pos = line.find('=');
+      if (eq_pos < 2) {
+        continue;
+      }
+      try {
+        std::string key = line.substr(2, eq_pos - 2);
+        std::string val = line.substr(eq_pos + 1);
+        result.emplace(std::move(key), std::move(val));
+      } catch (...) {
+      }
+    }
+  } catch (...) {
+  }
+  f.close();
+
+  return result;
 }
 
 /**
