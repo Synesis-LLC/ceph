@@ -1,4 +1,13 @@
-ceph (12.2.2-3.2) UNRELEASED; urgency=medium
+ceph (12.2.2-4) UNRELEASED; urgency=medium
+
+  * backported changes subset for blustore from v12.2.4
+  * improved mgr modules balancer and watcher
+  * radosgw-admin: updated help output
+  * osd: physical disk properties in osd metadata
+
+ -- Aleksei Gutikov <aleksey.gutikov@synesis.ru>  Fri, 06 Apr 2018 16:06:18 +0300
+
+ceph (12.2.2-3.2) stable; urgency=medium
 
   [ Andrey Martyanov ]
   * Decrease librados command execution timeouts
@@ -11,7 +20,7 @@ ceph (12.2.2-3.2) UNRELEASED; urgency=medium
   * backport ceph-volume from v12.2.4
   * 
 
- -- Aleksei Gutikov <aleksey.gutikov@synesis.ru>  Wed, 07 Mar 2018 14:50:12 +0300
+ -- Aleksei Gutikov <aleksey.gutikov@synesis.ru>  Fri, 06 Apr 2018 16:02:41 +0300
 
 ceph (12.2.2-1.5) stable; urgency=medium
 
