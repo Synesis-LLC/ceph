@@ -4,6 +4,7 @@ import errno
 import time
 import json
 from mgr_module import MgrModule, CommandResult
+from module_cfg import ModuleConfig
 from pprint import pformat
 import threading
 import datetime
@@ -55,23 +56,8 @@ class Module(MgrModule):
             "cmd": "watcher debug off",
             "desc": "Disable debug",
             "perm": "rw",
-        },
-        {
-            "cmd": "watcher cfg set name=key,type=CephString, name=value,type=CephString",
-            "desc": "Set config value",
-            "perm": "rw",
-        },
-        {
-            "cmd": "watcher cfg reset name=key,type=CephString",
-            "desc": "Reset config-key option to default",
-            "perm": "rw",
-        },
-        {
-            "cmd": "watcher cfg init",
-            "desc": "Initialize config-key options",
-            "perm": "rw",
-        },
-    ]
+        }
+    ] + ModuleConfig.get_commands("watcher")
 
     def handle_command(self, command):
         self.log.error("Handling command: '%s'" % str(command))
@@ -79,52 +65,31 @@ class Module(MgrModule):
             return (0, json.dumps(self.get_state(), indent=2), '')
 
         elif command['prefix'] == 'watcher on':
-            self.cfg_enable('active')
+            self.cfg.enable('active')
             return (0, '', '')
 
         elif command['prefix'] == 'watcher off':
-            self.cfg_disable('active')
+            self.cfg.disable('active')
             return (0, '', '')
 
         elif command['prefix'] == 'watcher mute':
-            self.cfg_enable('dry_run')
+            self.cfg.enable('dry_run')
             return (0, '', '')
 
         elif command['prefix'] == 'watcher unmute':
-            self.cfg_disable('dry_run')
+            self.cfg.disable('dry_run')
             return (0, '', '')
 
         elif command['prefix'] == 'watcher debug on':
-            self.cfg_enable('enable_debug')
+            self.cfg.enable('enable_debug')
             return (0, '', '')
 
         elif command['prefix'] == 'watcher debug off':
-            self.cfg_disable('enable_debug')
-            return (0, '', '')
-
-        elif command['prefix'] == 'watcher cfg set':
-            key = str(command['key'])
-            value = str(command['value'])
-            if key in self.cfg:
-                self.cfg_set_str(key, value)
-                return (0, '', '')
-            else:
-                return (-errno.EINVAL, '', 'key "%s" not found in config' % key)
-
-        elif command['prefix'] == 'watcher cfg reset':
-            key = str(command['key'])
-            if key in self.cfg:
-                self.cfg_reset(key)
-                return (0, '', '')
-            else:
-                return (-errno.EINVAL, '', 'key "%s" not found in config' % key)
-
-        elif command['prefix'] == 'watcher cfg init':
-            self.cfg_init()
+            self.cfg.disable('enable_debug')
             return (0, '', '')
 
         else:
-            return (-errno.EINVAL, '', "Command not found '{0}'".format(command['prefix']))
+            return self.cfg.handle_command("watcher", command)
 
     config_options = {
         'server_addr' : (str, '::'),
@@ -189,106 +154,9 @@ class Module(MgrModule):
         }
     }
 
-    def cfg_enable(self, key):
-        self.cfg[key] = True
-        self._cfg_write(key, True)
-
-    def cfg_disable(self, key):
-        self.cfg[key] = False
-        self._cfg_write(key, False)
-
-    def get_conf_spec(self, key):
-        keys = key.split('.')
-        spec = self.config_options
-        for k in keys:
-            if isinstance(spec, dict) and k in spec:
-                spec = spec[k]
-            else:
-                return None
-        return spec
-
-    def cfg_get(self, *keys):
-        key = '.'.join(keys)
-        return self.cfg.get(key, None)
-
-    def cfg_get_section(self, *section_path):
-        prefix = '.'.join(section_path)
-        section = {}
-        for k,v in self.cfg.items():
-            if k.startswith(prefix):
-                key = k[len(prefix)+1:]
-                section[key] = v
-        return section
-
-    def _cfg_write(self, key, value):
-        if key in self.cfg:
-            if isinstance(value, bool):
-                value = '1' if value else ''
-            else:
-                value = str(value)
-            self.set_config(key, value)
-
-    def cfg_set_str(self, key, str_value):
-        if key in self.cfg:
-            spec = self.get_conf_spec(key)
-            if spec is not None:
-                self.cfg[key] = spec[0](str_value)
-                self.set_config(key, str_value)
-
-    def cfg_reset(self, key):
-        if key in self.cfg:
-            spec = self.get_conf_spec(key)
-            if spec is not None:
-                self.cfg[key] = spec[1]
-                self._cfg_write(key, spec[1])
-
-    def list_config_options(self, root=None, prefix=None):
-        if root is None:
-            root = self.config_options
-
-        d = {}
-        for k,v in root.items():
-            if prefix is not None:
-                key = prefix + '.' + k
-            else:
-                key = k
-            if isinstance(v, dict):
-                d1 = self.list_config_options(v, key)
-                for k1,v1 in d1.items():
-                    d[k1] = v1
-            else:
-                d[key] = v
-        return d
-
-    def cfg_init(self):
-        self.log.info('Initializing config options')
-
-        for key,value in self.cfg.items():
-            v = self.get_config(key, None)
-            if v is None or value != v:
-                self._cfg_write(key, value)
-
-        for key,value in self.cfg.items():
-            self.log.info('cfg: %s = %s' % (key, pformat(value)))
-
-    def load_config(self):
-        for key,spec in self.list_config_options().items():
-            value = self.get_config(key, None)
-            if value is None:
-                self.cfg[key] = spec[1]
-            else:
-                self.cfg[key] = spec[0](value)
-
-        for key,value in self.cfg.items():
-            self.log.info('cfg: %s = %s' % (key, pformat(value)))
-
-
     def __init__(self, *args, **kwargs):
         super(Module, self).__init__(*args, **kwargs)
-        self.cfg = {
-            'enable_debug': DEFAULT_DEBUG,
-            'active': DEFAULT_ACTIVE,
-        }
+        self.cfg = ModuleConfig(self, self.config_options)
         self.serving = False
         self.debug_str = "starting"
         self.elapsed = datetime.timedelta()
@@ -324,13 +192,13 @@ class Module(MgrModule):
 
 
     def debug_start(self):
-        if self.cfg['enable_debug']:
+        if self.cfg.get('enable_debug'):
             self.debug_str = ""
         else:
             self.debug_str = "debug disabled"
 
     def debug(self, obj, label=""):
-        if self.cfg['enable_debug']:
+        if self.cfg.get('enable_debug'):
             self.debug_str = label + "\n" + pformat(obj) + "\n" + "-" * 100 + "\n" + self.debug_str
 
 
@@ -356,8 +224,8 @@ class Module(MgrModule):
             self.log.error(e.message)
             return False
 
-        if self.cfg['dump_latency']:
-            with open(self.cfg['dump_latency_filename'], "a+") as dumpfile:
+        if self.cfg.get('dump_latency'):
+            with open(self.cfg.get('dump_latency_filename'), "a+") as dumpfile:
                 dumpfile.write(json.dumps({"apply":self.osd_apply_lats, "commit":self.osd_commit_lats}))
                 dumpfile.write("\n")
 
@@ -407,8 +275,8 @@ class Module(MgrModule):
                 self.log.error("new osd: %d" % osd)
                 self.window[c][osd] = []
             self.window[c][osd].append(self.osd_lats[osd])
-            if len(self.window[c][osd]) > self.cfg['window_width']:
-                self.window[c][osd] = self.window[c][osd][-self.cfg['window_width']:]
+            if len(self.window[c][osd]) > self.cfg.get('window_width'):
+                self.window[c][osd] = self.window[c][osd][-self.cfg.get('window_width'):]
 
         # cleanup window from removed osds
         for c,v in self.window.items():
@@ -420,7 +288,7 @@ class Module(MgrModule):
                 self.log.error("drop osd-%d window" % osd)
                 del self.window[c][osd]
 
-        if self.cfg['enable_debug']:
+        if self.cfg.get('enable_debug'):
             debug_window = {}
             for dev_type,dev_type_data in self.window.items():
                 debug_window[dev_type] = dict([(osd_id, (len(values), sum(values), min(values), max(values))) for osd_id,values in dev_type_data.items()])
@@ -441,7 +309,7 @@ class Module(MgrModule):
             # prevent reweights before collected stats, for example on startup of plugin or osd
             if osd not in self.window[c]:
                 continue
-            if len(self.window[c][osd]) == self.cfg['window_width']:
+            if len(self.window[c][osd]) == self.cfg.get('window_width'):
                 self.avg_lats[c][osd] = float(sum(self.window[c][osd])) / len(self.window[c][osd])
                 self.min_lats[c][osd] = float(min(self.window[c][osd]))
                 self.max_lats[c][osd] = float(max(self.window[c][osd]))
@@ -555,9 +423,9 @@ class Module(MgrModule):
             out_osds = [osd_id for osd_id, osd in all_osds.items() if osd['in'] == 0]
             throttled_osds = [osd_id for osd_id, osd in all_osds.items() if osd['primary_affinity'] == 0.0]
 
-            osds_to_trottle = self.find_slow_osds(c, osds, self.cfg_get_section(c, 'pri_aff'), set(throttled_osds) | set(out_osds))
+            osds_to_trottle = self.find_slow_osds(c, osds, self.cfg.get_section(c, 'pri_aff'), set(throttled_osds) | set(out_osds))
 
-            osds_to_out = self.find_slow_osds(c, osds, self.cfg_get_section(c, 'out'), out_osds)
+            osds_to_out = self.find_slow_osds(c, osds, self.cfg.get_section(c, 'out'), out_osds)
 
             tmp = {'throttled_osds': list(throttled_osds),
                     'out_osds': list(out_osds)}
@@ -599,17 +467,17 @@ class Module(MgrModule):
         self.log.info("start process osds")
         self.tick = datetime.datetime.now()
         while self.serving:
-            next_tick = self.tick + datetime.timedelta(seconds=self.cfg['period'])
+            next_tick = self.tick + datetime.timedelta(seconds=self.cfg.get('period'))
             while datetime.datetime.now() < next_tick and self.serving:
                 time.sleep(0.1)
             if not self.serving:
                 break
 
             self.debug_start()
-            self.debug(self.cfg, 'config')
+            self.debug(self.cfg.dump(), 'config')
 
             self.tick = datetime.datetime.now()
-            if not self.cfg['active']:
+            if not self.cfg.get('active'):
                 self.window = {}
                 continue
 
@@ -617,7 +485,7 @@ class Module(MgrModule):
                 if self.check_cluster_state():
                     if self.collect_stats():
                         if self.aggregate_stats():
-                            if self.recalculate_throttling() and not self.cfg['dry_run']:
+                            if self.recalculate_throttling() and not self.cfg.get('dry_run'):
                                 self.apply_throttling()
                     else:
                         self.window = {}
@@ -657,19 +525,19 @@ class Module(MgrModule):
             @cherrypy.expose(['cfg', 'conf', 'config'])
             def cfg(self):
                 cherrypy.response.headers['Content-Type'] = 'application/json'
-                return json.dumps(global_instance().cfg, indent=2)
+                return json.dumps(global_instance().cfg.dump(), indent=2)
 
-        self.load_config()
+        self.cfg.load()
 
         self.serving = True
         self.worker = threading.Thread(target=lambda : self.process())
         self.worker.start()
 
-        self.log.error("server_addr: %s, server_port: %s" % (self.cfg['server_addr'], self.cfg['server_port']))
+        self.log.error("server_addr: %s, server_port: %s" % (self.cfg.get('server_addr'), self.cfg.get('server_port')))
 
         cherrypy.config.update({
-            'server.socket_host': self.cfg['server_addr'],
-            'server.socket_port': self.cfg['server_port'],
+            'server.socket_host': self.cfg.get('server_addr'),
+            'server.socket_port': self.cfg.get('server_port'),
             'engine.autoreload.on': False
         })
         cherrypy.tree.mount(Root(), "/")
