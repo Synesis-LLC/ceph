@@ -57,12 +57,17 @@ class Module(MgrModule):
             "perm": "rw",
         },
         {
-            "cmd": "watcher set name=key,type=CephString, name=value,type=CephString",
+            "cmd": "watcher cfg set name=key,type=CephString, name=value,type=CephString",
             "desc": "Set config value",
             "perm": "rw",
         },
         {
-            "cmd": "watcher init-cfg",
+            "cmd": "watcher cfg reset name=key,type=CephString",
+            "desc": "Reset config-key option to default",
+            "perm": "rw",
+        },
+        {
+            "cmd": "watcher cfg init",
             "desc": "Initialize config-key options",
             "perm": "rw",
         },
@@ -97,7 +102,7 @@ class Module(MgrModule):
             self.cfg_disable('enable_debug')
             return (0, '', '')
 
-        elif command['prefix'] == 'watcher set':
+        elif command['prefix'] == 'watcher cfg set':
             key = str(command['key'])
             value = str(command['value'])
             if key in self.cfg:
@@ -106,7 +111,7 @@ class Module(MgrModule):
             else:
                 return (-errno.EINVAL, '', 'key "%s" not found in config' % key)
 
-        elif command['prefix'] == 'watcher reset':
+        elif command['prefix'] == 'watcher cfg reset':
             key = str(command['key'])
             if key in self.cfg:
                 self.cfg_reset(key)
@@ -114,8 +119,8 @@ class Module(MgrModule):
             else:
                 return (-errno.EINVAL, '', 'key "%s" not found in config' % key)
 
-        elif command['prefix'] == 'watcher init-cfg':
-            self.init_cfg()
+        elif command['prefix'] == 'watcher cfg init':
+            self.cfg_init()
             return (0, '', '')
 
         else:
@@ -186,11 +191,11 @@ class Module(MgrModule):
 
     def cfg_enable(self, key):
         self.cfg[key] = True
-        self.cfg_write(key, True)
+        self._cfg_write(key, True)
 
     def cfg_disable(self, key):
         self.cfg[key] = False
-        self.cfg_write(key, False)
+        self._cfg_write(key, False)
 
     def get_conf_spec(self, key):
         keys = key.split('.')
@@ -215,7 +220,7 @@ class Module(MgrModule):
                 section[key] = v
         return section
 
-    def cfg_write(self, key, value):
+    def _cfg_write(self, key, value):
         if key in self.cfg:
             if isinstance(value, bool):
                 value = '1' if value else ''
@@ -235,7 +240,7 @@ class Module(MgrModule):
             spec = self.get_conf_spec(key)
             if spec is not None:
                 self.cfg[key] = spec[1]
-                self.cfg_write(key, spec[1])
+                self._cfg_write(key, spec[1])
 
     def list_config_options(self, root=None, prefix=None):
         if root is None:
@@ -255,13 +260,13 @@ class Module(MgrModule):
                 d[key] = v
         return d
 
-    def init_cfg(self):
+    def cfg_init(self):
         self.log.info('Initializing config options')
 
         for key,value in self.cfg.items():
             v = self.get_config(key, None)
             if v is None or value != v:
-                self.cfg_write(key, value)
+                self._cfg_write(key, value)
 
         for key,value in self.cfg.items():
             self.log.info('cfg: %s = %s' % (key, pformat(value)))
@@ -333,7 +338,6 @@ class Module(MgrModule):
         self.osd_map_crush = self.get("osd_map_crush")
         self.osd_stats = self.get("osd_stats")
         self.osd_map = self.get("osd_map")
-        self.pg_status = self.get("pg_status")
 
         if 'devices' not in self.osd_map_crush or len(self.osd_map_crush['devices']) == 0:
             return False
@@ -361,7 +365,7 @@ class Module(MgrModule):
         for osd_id in set(self.osd_apply_lats.keys()) | set(self.osd_commit_lats.keys()):
             self.osd_lats[osd_id] = max(self.osd_apply_lats.get(osd_id, 0), self.osd_commit_lats.get(osd_id, 0))
 
-        self.log.error("osd lats %d" % len(self.osd_lats))
+        self.log.error("collected osd lats %d" % len(self.osd_lats))
 
         return True
 
@@ -413,7 +417,7 @@ class Module(MgrModule):
                 if osd not in self.osd_lats:
                     to_remove.append(osd)
             for osd in to_remove:
-                self.log.error("drop osd.%d window" % osd)
+                self.log.error("drop osd-%d window" % osd)
                 del self.window[c][osd]
 
         if self.cfg['enable_debug']:
@@ -425,12 +429,14 @@ class Module(MgrModule):
         # calculate sum latencies
         self.avg_lats = {}
         self.min_lats = {}
+        self.max_lats = {}
         self.latest_lats = {}
         continue_process = False
         for osd,c in self.osd_class.items():
             if c not in self.avg_lats:
                 self.avg_lats[c] = {}
                 self.min_lats[c] = {}
+                self.max_lats[c] = {}
                 self.latest_lats[c] = {}
             # prevent reweights before collected stats, for example on startup of plugin or osd
             if osd not in self.window[c]:
@@ -438,6 +444,7 @@ class Module(MgrModule):
             if len(self.window[c][osd]) == self.cfg['window_width']:
                 self.avg_lats[c][osd] = float(sum(self.window[c][osd])) / len(self.window[c][osd])
                 self.min_lats[c][osd] = float(min(self.window[c][osd]))
+                self.max_lats[c][osd] = float(max(self.window[c][osd]))
                 self.latest_lats[c][osd] = float(self.window[c][osd][-1])
                 continue_process = True
 
@@ -445,6 +452,7 @@ class Module(MgrModule):
 
 
     def check_cluster_state(self):
+        self.pg_status = self.get("pg_status")
         unknown = self.pg_status.get('unknown_pgs_ratio', 0.0)
         degraded = self.pg_status.get('degraded_ratio', 0.0)
         inactive = self.pg_status.get('inactive_pgs_ratio', 0.0)
@@ -485,6 +493,8 @@ class Module(MgrModule):
             return []
 
         avg_lat = sum(self.avg_lats[c].values()) / len(self.avg_lats[c])
+        max_avg_lat = max(self.avg_lats[c].values())
+        max_lat_osd = max(self.max_lats[c].items(), key=operator.itemgetter(1))
 
         max_compliant_latency = params['max_compliant_latency']
         avg_latency_threshold = params['avg_latency_threshold'] * avg_lat
@@ -492,6 +502,7 @@ class Module(MgrModule):
         latest_latency_threshold = params['latest_latency_threshold'] * avg_lat
 
         self.debug((avg_lat, max_compliant_latency, avg_latency_threshold, min_latency_threshold, latest_latency_threshold), "find_slow_osds")
+        self.log.error('%s: avg_latency=%f, max_avg_lat=%f, max_lat=%f(osd-%d)' % (c, avg_lat, max_avg_lat, max_lat_osd[1], max_lat_osd[0]))
 
         throttles = []
         for osd,lat in self.avg_lats[c].items():
@@ -500,13 +511,19 @@ class Module(MgrModule):
             min_latency = self.min_lats[c][osd]
             latest = self.latest_lats[c][osd]
             if lat > avg_latency_threshold and min_latency > min_latency_threshold and latest > latest_latency_threshold:
+                self.log.error('%s: osd-%d: latency: avg=%f/%f, min=%f/%f, current=%f/%f' % \
+                                (c, osd, lat, avg_latency_threshold, min_latency, min_latency_threshold, latest, latest_latency_threshold))
                 throttles.append(osd)
+
+        if len(throttles) == 0:
+            self.log.error('%s: all osds latencies are under thresholds' % c)
+            return []
 
         all_osds = self.osd_state[c]
         sanity_check_max_osds = int(len(all_osds)*params['max_osds_sanity_check'])
 
         if len(throttles) > sanity_check_max_osds:
-            msg = "Throttling algorithm found too many \"%s\" osds %d than allowed %d, please verify module configuration." % \
+            msg = "%s: throttling algorithm found too many osds %d than allowed %d, please verify module configuration." % \
                     (c, len(throttles), sanity_check_max_osds)
             self.debug(throttles, msg)
             self.log.error(msg)
@@ -514,11 +531,13 @@ class Module(MgrModule):
 
         max_throttled_osds = int(len(all_osds)*params['max_throttled_osds'])
 
-        if len(throttled_osds) > max_throttled_osds:
+        if len(throttled_osds) >= max_throttled_osds:
+            self.log.error('%s: max_throttled_osds already throttled: %d >= %d' % (c, len(throttled_osds), max_throttled_osds))
             return []
 
         to_throttle_osds = set(throttles) - set(throttled_osds)
         max_throttled_osds -= len(throttled_osds)
+        self.log.error('%s: allowed to throttle %d osds' % (c, max_throttled_osds))
         if max_throttled_osds > 0:
             return list(to_throttle_osds)[:max_throttled_osds]
         else:
@@ -556,13 +575,13 @@ class Module(MgrModule):
         for osd_id in self.osds_to_trottle:
             self.log.error('drop primary affinity to 0.0 for osd-%d' % osd_id)
             self.do_osd_primary_afinity_sync(osd_id, 0.0)
-            self.log.error("drop osd.%d window" % osd_id)
+            self.log.error("drop osd-%d window" % osd_id)
             del self.window[self.osd_class[osd_id]][osd_id]
 
         for osd_id in self.osds_to_out:
             self.log.error('throw out osd-%d' % osd_id)
             self.do_osd_out_sync(osd_id)
-            self.log.error("drop osd.%d window" % osd_id)
+            self.log.error("drop osd-%d window" % osd_id)
             del self.window[self.osd_class[osd_id]][osd_id]
 
 
@@ -595,8 +614,8 @@ class Module(MgrModule):
                 continue
 
             try:
-                if self.collect_stats():
-                    if self.check_cluster_state():
+                if self.check_cluster_state():
+                    if self.collect_stats():
                         if self.aggregate_stats():
                             if self.recalculate_throttling() and not self.cfg['dry_run']:
                                 self.apply_throttling()
