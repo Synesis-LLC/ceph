@@ -10,6 +10,7 @@ import math
 import random
 import time
 from mgr_module import MgrModule, CommandResult
+from module_cfg import ModuleConfig
 from threading import Event
 from pprint import pformat
 import numpy as np
@@ -296,16 +297,11 @@ class Module(MgrModule):
             "perm": "r",
         },
         {
-            "cmd": "balancer init-cfg",
-            "desc": "Initialize config-key options",
-            "perm": "rw",
-        },
-        {
             "cmd": "balancer reweight name=device_class,type=CephString, name=new_weight,type=CephFloat",
             "desc": "Reweight all osds with device_class to new_weight",
             "perm": "rw",
         },
-    ]
+    ] + ModuleConfig.get_commands("balancer")
     active = False
     run = True
     plans = {}
@@ -321,7 +317,7 @@ class Module(MgrModule):
         'upmap_max_deviation' : (float, .01),
         'crush_compat_max_iterations' : (int, 25),
         'crush_compat_step' : (float, .5),
-        'active' : (bool, '1'),
+        'active' : (bool, True),
 
         'stats_sanity_kb' : (int, 1),
 
@@ -331,41 +327,38 @@ class Module(MgrModule):
         'reweight_normalization_mode' : (str, 'max'),
         'reweight_normalization_avg_base' : (float, 0.5),
 
-        # will do reweight if even one osd weight difference greater than
-        'max_usage_difference_hdd' : (float, .05),
-        'max_usage_difference_ssd' : (float, .05),
-        'abs_max_difference_hdd' : (bool, '1'),
-        'abs_max_difference_ssd' : (bool, '1'),
-
         # min usage_diff and usage_mult to reweight osd
         'min_osd_usage_diff' : (float, .005), # if avg_usage=0.5 and usage=0.51 than usage_diff=0.01
         'min_osd_usage_mult_diff' : (float, .01), # if avg_usage=0.5 and usage_diff=0.01 than usage_mult_diff=0.02
 
-        # cv=stddev/mean
-        'cv_max_hdd' : (float, .02),
-        'cv_max_ssd' : (float, .02),
-        # do not reweight if avg usage is lower than
-        'min_avg_usage_hdd' : (float, .05),
-        'min_avg_usage_ssd' : (float, .05),
+        'hdd' : {
+            'active' : (bool, True),
+            # cv=stddev/mean
+            'cv_max' : (float, .02),
+            # do not reweight if avg usage is lower than
+            'min_avg_usage' : (float, .05),
+            # max step of weight change for each osd device class
+            'max_reweight_step_inc' : (float, .02),
+            'max_reweight_step_dec' : (float, .02),
+            # will do reweight if even one osd weight difference greater than
+            'max_usage_difference' : (float, .05),
+            'abs_max_difference' : (bool, True),
+        },
 
-        # max step of weight change for each osd device class
-        'max_reweight_step_inc_hdd' : (float, .02),
-        'max_reweight_step_dec_hdd' : (float, .02),
-        'max_reweight_step_inc_ssd' : (float, .02),
-        'max_reweight_step_dec_ssd' : (float, .02),
+        'ssd' : {
+            'active' : (bool, True),
+            'cv_max' : (float, .02),
+            'min_avg_usage' : (float, .05),
+            'max_reweight_step_inc' : (float, .02),
+            'max_reweight_step_dec' : (float, .02),
+            'max_usage_difference' : (float, .05),
+            'abs_max_difference' : (bool, True),
+        },
     }
-
-    def get_cfg(self, key, device_class=None):
-        if device_class:
-            if device_class != 'hdd':
-                device_class = 'ssd'
-            key = key + '_' + device_class
-            return self.config_options[key][0](self.get_config(key, self.config_options[key][1]))
-        else:
-            return self.config_options[key][0](self.get_config(key, self.config_options[key][1]))
 
     def __init__(self, *args, **kwargs):
         super(Module, self).__init__(*args, **kwargs)
+        self.cfg = ModuleConfig(self, self.config_options)
         self.event = Event()
         self.log.info('Python ' + sys.version)
         self.log.info('sys.path:')
@@ -381,29 +374,30 @@ class Module(MgrModule):
 
     def handle_command(self, command):
         self.log.warn("Handling command: '%s'" % str(command))
+
         if command['prefix'] == 'balancer status':
             s = {
                 'plans': self.plans.keys(),
-                'active': self.active,
-                'mode': self.get_cfg('mode'),
+                'active': self.cfg.get('active'),
+                'mode': self.cfg.get('mode'),
                 'run' : self.run,
             }
             return (0, json.dumps(s, indent=4), '')
+
         elif command['prefix'] == 'balancer mode':
-            self.set_config('mode', command['mode'])
+            self.cfg.set('mode', command['mode'])
             return (0, '', '')
+
         elif command['prefix'] == 'balancer on':
-            if not self.active:
-                self.set_config('active', '1')
-                self.active = True
+            self.cfg.enable('active')
             self.event.set()
             return (0, '', '')
+
         elif command['prefix'] == 'balancer off':
-            if self.active:
-                self.set_config('active', '')
-                self.active = False
+            self.cfg.disable('active')
             self.event.set()
             return (0, '', '')
+
         elif command['prefix'] == 'balancer eval' or command['prefix'] == 'balancer eval-verbose':
             verbose = command['prefix'] == 'balancer eval-verbose'
             if 'plan' in command:
@@ -416,6 +410,7 @@ class Module(MgrModule):
                                   self.get("pg_dump"),
                                   'current cluster')
             return (0, self.evaluate(ms, verbose=verbose), '')
+
         elif command['prefix'] == 'balancer optimize':
             self.log.error('plan_create %s' % command['plan'])
             plan = self.plan_create(command['plan'])
@@ -423,15 +418,18 @@ class Module(MgrModule):
             self.optimize(plan)
             self.log.error('optimization finished %s' % command['plan'])
             return (0, '', '')
+
         elif command['prefix'] == 'balancer rm':
             plan = self.plans.get(command['plan'])
             if not plan:
                 return (-errno.ENOENT, '', 'plan %s not found' % command['plan'])
             self.plan_rm(command['plan'])
             return (0, '', '')
+
         elif command['prefix'] == 'balancer reset':
             self.plans = {}
             return (0, '', '')
+
         elif command['prefix'] == 'balancer dump':
             plan = self.plans.get(command['plan'])
             if not plan:
@@ -440,11 +438,13 @@ class Module(MgrModule):
                 return (0, plan.dump_str(command['path']), '')
             else:
                 return (0, plan.dump_str(), '')
+
         elif command['prefix'] == 'balancer show':
             plan = self.plans.get(command['plan'])
             if not plan:
                 return (-errno.ENOENT, '', 'plan %s not found' % command['plan'])
             return (0, plan.show(), '')
+
         elif command['prefix'] == 'balancer execute':
             plan = self.plans.get(command['plan'])
             if not plan:
@@ -452,9 +452,7 @@ class Module(MgrModule):
             self.execute(plan)
             self.plan_rm(command['plan'])
             return (0, '', '')
-        elif command['prefix'] == 'balancer init-cfg':
-            self.init_cfg()
-            return (0, '', '')
+
         elif command['prefix'] == 'balancer reweight':
             device_class = command['device_class']
             new_weight = command['new_weight']
@@ -462,17 +460,9 @@ class Module(MgrModule):
             if result[0] != 0:
                 return (result[0], '', result[1])
             return (0, '', '')
-        else:
-            return (-errno.EINVAL, '',
-                    "Command not found '{0}'".format(command['prefix']))
 
-    def init_cfg(self):
-        self.log.info('Initializing config options')
-        for key,value in self.config_options.items():
-            if not self.get_config(key, False):
-                self.set_config(key, str(value[1]))
-        for key in self.config_options:
-            self.log.info('%s : %s' % (key, pformat(self.get_cfg(key))))
+        else:
+            return self.cfg.handle_command("balancer", command)
 
     def shutdown(self):
         self.log.info('Stopping')
@@ -486,17 +476,17 @@ class Module(MgrModule):
             return tod >= begin or tod < end
 
     def serve(self):
+        self.cfg.load()
         self.log.error('Starting')
         while self.run:
-            self.active = self.get_cfg('active')
-            begin_time = self.get_cfg('begin_time')
-            end_time = self.get_cfg('end_time')
+            begin_time = self.cfg.get('begin_time')
+            end_time = self.cfg.get('end_time')
             timeofday = time.strftime('%H%M', time.localtime())
             self.log.error('Waking up [%s, scheduled for %s-%s, now %s]',
-                           "active" if self.active else "inactive",
+                           "active" if self.cfg.get('active') else "inactive",
                            begin_time, end_time, timeofday)
-            sleep_interval = float(self.get_cfg('sleep_interval'))
-            if self.active and self.time_in_interval(timeofday, begin_time, end_time):
+            sleep_interval = float(self.cfg.get('sleep_interval'))
+            if self.cfg.get('active') and self.time_in_interval(timeofday, begin_time, end_time):
                 self.log.error('Running')
                 name = 'auto_%s' % time.strftime(TIME_FORMAT, time.gmtime())
                 plan = self.plan_create(name)
@@ -763,8 +753,8 @@ class Module(MgrModule):
 
     def optimize(self, plan):
         self.log.error('Optimize plan %s' % plan.name)
-        plan.mode = self.get_cfg('mode')
-        max_misplaced = float(self.get_cfg('max_misplaced'))
+        plan.mode = self.cfg.get('mode')
+        max_misplaced = self.cfg.get('max_misplaced')
         self.log.error('Mode %s, max misplaced %f' %
                       (plan.mode, max_misplaced))
 
@@ -800,8 +790,8 @@ class Module(MgrModule):
 
     def do_upmap(self, plan):
         self.log.info('do_upmap')
-        max_iterations = self.get_cfg('upmap_max_iterations')
-        max_deviation = self.get_cfg('upmap_max_deviation')
+        max_iterations = self.cfg.get('upmap_max_iterations')
+        max_deviation = self.cfg.get('upmap_max_deviation')
 
         ms = plan.initial
         pools = [str(i['pool_name']) for i in ms.osdmap_dump.get('pools',[])]
@@ -826,13 +816,13 @@ class Module(MgrModule):
 
     def do_crush_compat(self, plan):
         self.log.info('do_crush_compat')
-        max_iterations = self.get_cfg('crush_compat_max_iterations')
+        max_iterations = self.cfg.get('crush_compat_max_iterations')
         if max_iterations < 1:
             return False
-        step = self.get_cfg('crush_compat_step')
+        step = self.cfg.get('crush_compat_step')
         if step <= 0 or step >= 1.0:
             return False
-        max_misplaced = float(self.get_cfg('max_misplaced'))
+        max_misplaced = self.cfg.get('max_misplaced')
         min_pg_per_osd = 2
 
         ms = plan.initial
@@ -997,8 +987,8 @@ class Module(MgrModule):
     def calculate_optimal_weight(self, osds, device_class, stats):
         self.log.error(device_class + ': calculate optimal weight %d' % len(osds))
 
-        norm_mode = self.get_cfg('reweight_normalization_mode')
-        norm_avg_base = self.get_cfg('reweight_normalization_avg_base')
+        norm_mode = self.cfg.get('reweight_normalization_mode')
+        norm_avg_base = self.cfg.get('reweight_normalization_avg_base')
 
         # calculate usage, average usage, min and max usage
         total_used = 0
@@ -1073,14 +1063,14 @@ class Module(MgrModule):
         if not self.calculate_optimal_weight(osds, device_class, stats):
             return {}
 
-        max_usage_difference = self.get_cfg('max_usage_difference', device_class)
-        abs_max_difference = self.get_cfg('abs_max_difference', device_class)
-        max_reweight_step_inc = self.get_cfg('max_reweight_step_inc', device_class)
-        max_reweight_step_dec = self.get_cfg('max_reweight_step_dec', device_class)
-        cv_max = self.get_cfg('cv_max', device_class)
-        min_avg_usage = self.get_cfg('min_avg_usage', device_class)
-        min_osd_usage_diff = self.get_cfg('min_osd_usage_diff')
-        min_osd_usage_mult_diff = self.get_cfg('min_osd_usage_mult_diff')
+        max_usage_difference = self.cfg.get(device_class, 'max_usage_difference')
+        abs_max_difference = self.cfg.get(device_class, 'abs_max_difference')
+        max_reweight_step_inc = self.cfg.get(device_class, 'max_reweight_step_inc')
+        max_reweight_step_dec = self.cfg.get(device_class, 'max_reweight_step_dec')
+        cv_max = self.cfg.get(device_class, 'cv_max')
+        min_avg_usage = self.cfg.get('min_avg_usage')
+        min_osd_usage_diff = self.cfg.get('min_osd_usage_diff')
+        min_osd_usage_mult_diff = self.cfg.get('min_osd_usage_mult_diff')
 
         do_reweight = False
 
@@ -1150,7 +1140,7 @@ class Module(MgrModule):
         for stat in osd_stats:
             stats_by_osd[stat['osd']] = stat
 
-        stats_sanity_kb = self.get_cfg('stats_sanity_kb')
+        stats_sanity_kb = self.cfg.get('stats_sanity_kb')
 
         # group osds by device_class and filter up and in osds
         insane_stats = False

@@ -77,11 +77,12 @@ class ModuleConfig:
             self._cfg[plain_key] = spec[1]
             self._write(plain_key, spec[1])
 
-    def set_str(self, plain_key, str_value):
+    def set(self, plain_key, value):
         if plain_key in self._spec:
-            val = self._str_to_val(plain_key, str_value)
-            self._cfg[plain_key] = val
-            self._write(plain_key, val)
+            if isinstance(value, str):
+                value = self._str_to_val(plain_key, value)
+            self._cfg[plain_key] = value
+            self._write(plain_key, value)
 
     def enable(self, plain_key):
         self._cfg[plain_key] = True
@@ -146,7 +147,7 @@ class ModuleConfig:
             key = str(command['key'])
             value = str(command['value'])
             if key in self._spec:
-                self.set_str(key, value)
+                self.set(key, value)
                 return (0, '', '')
             else:
                 return (-errno.EINVAL, '', 'key "%s" not found in config' % key)
