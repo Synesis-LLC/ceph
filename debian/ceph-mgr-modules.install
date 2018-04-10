@@ -1,1 +1,2 @@
 /usr/lib/ceph/mgr/watcher
+/usr/lib/ceph/mgr/balancer

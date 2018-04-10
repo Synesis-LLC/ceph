@@ -187,6 +187,8 @@ Description: manager for the ceph distributed storage system
 Package: ceph-mgr-modules
 Architecture: all
 Depends: ceph-mgr (= ${binary:Version}),
+         python-cherrypy3,
+         python-numpy,
 Description: manager modules for the ceph distributed storage system
  Ceph is a massively scalable, open-source, distributed
  storage system that runs on commodity hardware and delivers object,

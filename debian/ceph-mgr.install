@@ -1,7 +1,6 @@
 usr/bin/ceph-mgr
 usr/lib/ceph/mgr/mgr_module.py
 usr/lib/ceph/mgr/module_cfg.py
-usr/lib/ceph/mgr/balancer
 usr/lib/ceph/mgr/dashboard
 usr/lib/ceph/mgr/influx
 usr/lib/ceph/mgr/localpool
