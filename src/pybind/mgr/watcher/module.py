@@ -61,6 +61,11 @@ class Module(MgrModule):
 
     def handle_command(self, command):
         self.log.error("Handling command: '%s'" % str(command))
+
+        handled, result = self.cfg.handle_command("watcher", command)
+        if handled:
+            return result
+
         if command['prefix'] == 'watcher status':
             return (0, json.dumps(self.get_state(), indent=2), '')
 
@@ -89,7 +94,7 @@ class Module(MgrModule):
             return (0, '', '')
 
         else:
-            return self.cfg.handle_command("watcher", command)
+            return (-errno.EINVAL, '', "Command not found '{0}'".format(command['prefix']))
 
     config_options = {
         'server_addr' : (str, '::'),

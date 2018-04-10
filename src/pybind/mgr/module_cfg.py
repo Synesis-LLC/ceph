@@ -148,24 +148,24 @@ class ModuleConfig:
             value = str(command['value'])
             if key in self._spec:
                 self.set(key, value)
-                return (0, '', '')
+                return True, (0, '', '')
             else:
-                return (-errno.EINVAL, '', 'key "%s" not found in config' % key)
+                return True, (-errno.EINVAL, '', 'key "%s" not found in config' % key)
 
         elif command['prefix'] == module_name+' cfg reset':
             key = str(command['key'])
             if key in self._spec:
                 self.reset(key)
-                return (0, '', '')
+                return True, (0, '', '')
             else:
-                return (-errno.EINVAL, '', 'key "%s" not found in config' % key)
+                return True, (-errno.EINVAL, '', 'key "%s" not found in config' % key)
 
         elif command['prefix'] == module_name+' cfg init':
             self.init()
-            return (0, '', '')
+            return True, (0, '', '')
 
         elif command['prefix'] == module_name+' cfg dump':
-            return (0, json.dumps(self.dump(), indent=2), '')
+            return True, (0, json.dumps(self.dump(), indent=2), '')
 
         else:
-            return (-errno.EINVAL, '', "Command not found '{0}'".format(command['prefix']))
+            return False, ()

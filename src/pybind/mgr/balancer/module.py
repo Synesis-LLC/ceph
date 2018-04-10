@@ -375,6 +375,10 @@ class Module(MgrModule):
     def handle_command(self, command):
         self.log.warn("Handling command: '%s'" % str(command))
 
+        handled, result = self.cfg.handle_command("balancer", command)
+        if handled:
+            return result
+
         if command['prefix'] == 'balancer status':
             s = {
                 'plans': self.plans.keys(),
@@ -462,7 +466,7 @@ class Module(MgrModule):
             return (0, '', '')
 
         else:
-            return self.cfg.handle_command("balancer", command)
+            return (-errno.EINVAL, '', "Command not found '{0}'".format(command['prefix']))
 
     def shutdown(self):
         self.log.info('Stopping')
