@@ -1,11 +1,11 @@
-ceph (12.2.2-4) UNRELEASED; urgency=medium
+ceph (12.2.2-4) stable; urgency=medium
 
   * backported changes subset for blustore from v12.2.4
   * improved mgr modules balancer and watcher
   * radosgw-admin: updated help output
   * osd: physical disk properties in osd metadata
 
- -- Aleksei Gutikov <aleksey.gutikov@synesis.ru>  Fri, 06 Apr 2018 16:06:18 +0300
+ -- Aleksei Gutikov <aleksey.gutikov@synesis.ru>  Tue, 10 Apr 2018 13:01:54 +0300
 
 ceph (12.2.2-3.2) stable; urgency=medium
 
