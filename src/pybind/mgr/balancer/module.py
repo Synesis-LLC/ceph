@@ -321,15 +321,6 @@ class Module(MgrModule):
 
         'stats_sanity_kb' : (int, 1),
 
-        # max - pull max weight to 1.0
-        # avg - set 0.5 weight for osd with avg usage
-        # none - do not normalize
-        'reweight_normalization_mode' : (str, 'max'),
-        'reweight_normalization_avg_base' : (float, 0.5),
-
-        # min usage_diff and usage_mult to reweight osd
-        'min_osd_usage_diff' : (float, .005), # if avg_usage=0.5 and usage=0.51 than usage_diff=0.01
-        'min_osd_usage_mult_diff' : (float, .01), # if avg_usage=0.5 and usage_diff=0.01 than usage_mult_diff=0.02
 
         'hdd' : {
             'active' : (bool, True),
@@ -343,6 +334,14 @@ class Module(MgrModule):
             # will do reweight if even one osd weight difference greater than
             'max_usage_difference' : (float, .05),
             'abs_max_difference' : (bool, True),
+            # max - pull max weight to 1.0
+            # avg - set 0.5 weight for osd with avg usage
+            # none - do not normalize
+            'reweight_normalization_mode' : (str, 'max'),
+            'reweight_normalization_avg_base' : (float, 0.5),
+            # min usage_diff and usage_mult to reweight osd
+            'min_osd_usage_diff' : (float, .005), # if avg_usage=0.5 and usage=0.51 than usage_diff=0.01
+            'min_osd_usage_mult_diff' : (float, .01), # if avg_usage=0.5 and usage_diff=0.01 than usage_mult_diff=0.02
         },
 
         'ssd' : {
@@ -353,6 +352,10 @@ class Module(MgrModule):
             'max_reweight_step_dec' : (float, .02),
             'max_usage_difference' : (float, .05),
             'abs_max_difference' : (bool, True),
+            'reweight_normalization_mode' : (str, 'max'),
+            'reweight_normalization_avg_base' : (float, 0.5),
+            'min_osd_usage_diff' : (float, .005),
+            'min_osd_usage_mult_diff' : (float, .01),
         },
     }
 
@@ -991,8 +994,8 @@ class Module(MgrModule):
     def calculate_optimal_weight(self, osds, device_class, stats):
         self.log.error(device_class + ': calculate optimal weight %d' % len(osds))
 
-        norm_mode = self.cfg.get('reweight_normalization_mode')
-        norm_avg_base = self.cfg.get('reweight_normalization_avg_base')
+        norm_mode = self.cfg.get(device_class, 'reweight_normalization_mode')
+        norm_avg_base = self.cfg.get(device_class, 'reweight_normalization_avg_base')
 
         # calculate usage, average usage, min and max usage
         total_used = 0
@@ -1072,9 +1075,9 @@ class Module(MgrModule):
         max_reweight_step_inc = self.cfg.get(device_class, 'max_reweight_step_inc')
         max_reweight_step_dec = self.cfg.get(device_class, 'max_reweight_step_dec')
         cv_max = self.cfg.get(device_class, 'cv_max')
-        min_avg_usage = self.cfg.get('min_avg_usage')
-        min_osd_usage_diff = self.cfg.get('min_osd_usage_diff')
-        min_osd_usage_mult_diff = self.cfg.get('min_osd_usage_mult_diff')
+        min_avg_usage = self.cfg.get(device_class, 'min_avg_usage')
+        min_osd_usage_diff = self.cfg.get(device_class, 'min_osd_usage_diff')
+        min_osd_usage_mult_diff = self.cfg.get(device_class, 'min_osd_usage_mult_diff')
 
         do_reweight = False
 
@@ -1186,7 +1189,7 @@ class Module(MgrModule):
 
         # filter reweights while we must limit number of reweighted osds
         for device_class,osds in plan.osd_by_device_class.iteritems():
-            if len(osds) > 0:
+            if self.cfg.get(device_class, "active") and len(osds) > 0:
                 reweights = self.calculate_reweights(osds, device_class)
                 self.log.error(device_class + ': calculated new reweights: %d' % len(reweights))
                 for osd_id,w in reweights.iteritems():
