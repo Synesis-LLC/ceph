@@ -16,6 +16,16 @@ set_target_properties(cls_hello PROPERTIES
   INSTALL_RPATH "")
 install(TARGETS cls_hello DESTINATION ${cls_dir})
 
+# cls_vector
+set(cls_vector_srcs vector/cls_vector.cc)
+add_library(cls_vector SHARED ${cls_vector_srcs})
+set_target_properties(cls_vector PROPERTIES
+  VERSION "1.0.0"
+  SOVERSION "1"
+  INSTALL_RPATH "")
+install(TARGETS cls_vector DESTINATION ${cls_dir})
+list(APPEND cls_embedded_srcs ${cls_vector_srcs})
+
 # cls_numops
 set(cls_numops_srcs numops/cls_numops.cc)
 add_library(cls_numops SHARED ${cls_numops_srcs})
