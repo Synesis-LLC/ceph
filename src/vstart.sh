@@ -526,6 +526,10 @@ $CMGRDEBUG
 $extra_conf
 [osd]
 $DAEMONOPTS
+        osd_op_num_shards = 8
+        osd_op_num_threads_per_shard = 2
+        osd_max_write_size = 128
+        osd_max_object_size = 134217728
         osd_check_max_object_name_len_on_startup = false
         osd data = $CEPH_DEV_DIR/osd\$id
         osd journal = $CEPH_DEV_DIR/osd\$id/journal
