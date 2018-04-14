@@ -874,8 +874,8 @@ int PrimaryLogPG::get_pgls_filter(bufferlist::iterator& iter, PGLSFilter **pfilt
 
     const std::string class_name = type.substr(0, dot);
     const std::string filter_name = type.substr(dot + 1);
-    ClassHandler::ClassData *cls = NULL;
-    int r = osd->class_handler->open_class(class_name, &cls);
+    ClassHandler::ClassDataPtr cls;
+    int r = osd->class_handler->open_class(class_name, cls);
     if (r != 0) {
       derr << "Error opening class '" << class_name << "': "
            << cpp_strerror(r) << dendl;
@@ -5207,8 +5207,8 @@ int PrimaryLogPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
 	}
 	tracepoint(osd, do_osd_op_pre_call, soid.oid.name.c_str(), soid.snap.val, cname.c_str(), mname.c_str());
 
-	ClassHandler::ClassData *cls;
-	result = osd->class_handler->open_class(cname, &cls);
+	ClassHandler::ClassDataPtr cls;
+	result = osd->class_handler->open_class(cname, cls);
 	assert(result == 0);   // init_op_flags() already verified this works.
 
 	ClassHandler::ClassMethod *method = cls->get_method(mname.c_str());

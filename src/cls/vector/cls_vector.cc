@@ -40,7 +40,6 @@ double disatance(const uint8_t* v1, const uint8_t* v2, uint32_t length)
 //TODO: binary reques/response format
 //TODO: find n closest, multiple search request
 
-//TODO: reload class on-fly with osd command with optional requests wait(with timeout) or fail
 //TODO: custom osd classes in separate deb package
 
 static int find_closest(cls_method_context_t hctx, bufferlist *in, bufferlist *out)

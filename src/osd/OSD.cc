@@ -10045,8 +10045,8 @@ int OSD::init_op_flags(OpRequestRef& op)
 	bp.copy(iter->op.cls.class_len, cname);
 	bp.copy(iter->op.cls.method_len, mname);
 
-	ClassHandler::ClassData *cls;
-	int r = class_handler->open_class(cname, &cls);
+	ClassHandler::ClassDataPtr cls;
+	int r = class_handler->open_class(cname, cls);
 	if (r) {
 	  derr << "class " << cname << " open got " << cpp_strerror(r) << dendl;
 	  if (r == -ENOENT)
