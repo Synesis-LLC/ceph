@@ -2634,6 +2634,14 @@ std::vector<Option> get_global_options() {
     .set_default("cephfs hello journal lock log numops " "rbd refcount replica_log rgw statelog timeindex user version")
     .set_description(""),
 
+    Option("osd_open_class_timeout", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    .set_default(15)
+    .set_description("open_class will wait for close_class to finish, seconds, negative - forever, 0 - not wait"),
+
+    Option("osd_close_class_timeout", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    .set_default(10)
+    .set_description("close_class will wait for class users to finish, seconds, negative - forever, 0 - not wait"),
+
     Option("osd_check_for_log_corruption", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(false)
     .set_description(""),

@@ -6572,6 +6572,21 @@ COMMAND("compact",
         "compact object store's omap. "
         "WARNING: Compaction probably slows your requests",
         "osd", "rw", "cli,rest")
+COMMAND("cls_reload" \
+        " name=class_name,type=CephString,req=true",
+        "unload and let class be loaded on-demand",
+        "osd", "rw", "cli,rest")
+COMMAND("cls_disable" \
+        " name=class_name,type=CephString,req=true",
+        "unload and block class on-demand loading",
+        "osd", "rw", "cli,rest")
+COMMAND("cls_enable" \
+        " name=class_name,type=CephString,req=true",
+        "unblock class on-demand loading",
+        "osd", "rw", "cli,rest")
+COMMAND("cls_list",
+        "list classes and states",
+        "osd", "r", "cli,rest")
 };
 
 void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, bufferlist& data)
@@ -7008,6 +7023,52 @@ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, buffe
             << time_span.count()
             << " seconds" << dendl;
     ss << "compacted omap in " << time_span.count() << " seconds";
+  }
+
+  else if (prefix == "cls_reload") {
+    std::string class_name;
+    cmd_getval(cct, cmdmap, "class_name", class_name);
+    r = class_handler->reload_class(class_name);
+    if (r != 0) {
+      f->dump_format("class \"%s\" reload failed", class_name.c_str());
+      f->flush(ds);
+      dout(0) << "class \"" << class_name << "\" reload failed" << dendl;
+    }
+  }
+  else if (prefix == "cls_disable") {
+    std::string class_name;
+    cmd_getval(cct, cmdmap, "class_name", class_name);
+    r = class_handler->unload_and_block_class(class_name);
+    if (r != 0) {
+      //TODO: return error descrription from class handler
+      f->dump_format("class \"%s\" unload_and_block failed", class_name.c_str());
+      f->flush(ds);
+      dout(0) << "class \"" << class_name << "\" unload_and_block failed" << dendl;
+    }
+  }
+  else if (prefix == "cls_enable") {
+    std::string class_name;
+    cmd_getval(cct, cmdmap, "class_name", class_name);
+    r = class_handler->unblock_class(class_name);
+    if (r != 0) {
+      f->dump_format("class \"%s\" unblock failed", class_name.c_str());
+      f->flush(ds);
+      dout(0) << "class \"" << class_name << "\" unblock failed" << dendl;
+    }
+  }
+  else if (prefix == "cls_list") {
+    std::list<std::pair<std::string, std::string>> class_list;
+    r = class_handler->list_classes(class_list);
+    if (r != 0) {
+      dout(0) << "list classes failed" << dendl;
+    } else {
+      f->open_object_section("cls");
+      for (const auto& class_state : class_list) {
+        f->dump_string(class_state.first.c_str(), class_state.second.c_str());
+      }
+      f->close_section();
+      f->flush(ds);
+    }
   }
 
   else {
@@ -10190,7 +10251,9 @@ int OSD::init_op_flags(OpRequestRef& op)
 	bp.copy(iter->op.cls.class_len, cname);
 	bp.copy(iter->op.cls.method_len, mname);
 
-	ClassHandler::ClassData *cls;
+	ClassHandler::ClassDataPtr cls;
+	//TODO: replace with get_class_method_flags and get_class_info (without explicit open_class)
+	//TODO: move ClassInfo to ClassHandler.h
 	int r = class_handler->open_class(cname, &cls);
 	if (r) {
 	  derr << "class " << cname << " open got " << cpp_strerror(r) << dendl;

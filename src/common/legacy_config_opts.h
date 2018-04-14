@@ -797,6 +797,8 @@ OPTION(osd_class_dir, OPT_STR) // where rados plugins are stored
 OPTION(osd_open_classes_on_start, OPT_BOOL)
 OPTION(osd_class_load_list, OPT_STR) // list of object classes allowed to be loaded (allow all: *)
 OPTION(osd_class_default_list, OPT_STR) // list of object classes with default execute perm (allow all: *)
+OPTION(osd_open_class_timeout, OPT_INT)
+OPTION(osd_close_class_timeout, OPT_INT)
 OPTION(osd_check_for_log_corruption, OPT_BOOL)
 OPTION(osd_use_stale_snap, OPT_BOOL)
 OPTION(osd_rollback_to_cluster_snap, OPT_STR)
