@@ -49,6 +49,20 @@ int ClassHandler::_open_class(const string& cname, ClassData **pcls)
   return 0;
 }
 
+int ClassHandler::list_classes(std::list<std::pair<std::string, std::string>>& class_list)
+{
+  Mutex::Locker lock(mutex);
+  for (const auto& cls : classes) {
+    auto cgd = _get_class_guard(cls.first);
+    if (cgd) {
+      class_list.emplace_back(cls.first, cgd->is_blocked() ? "blocked" : "active");
+    } else {
+      class_list.emplace_back(cls.first, "unknown");
+    }
+  }
+  return 0;
+}
+
 int ClassHandler::open_class(const string& cname, ClassDataPtr& pcls)
 {
   // get class guard if it already present

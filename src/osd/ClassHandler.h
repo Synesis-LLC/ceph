@@ -276,6 +276,8 @@ public:
   void add_embedded_class(const string& cname);
   int open_class(const string& cname, ClassDataPtr& pcls);
 
+  int list_classes(std::list<std::pair<std::string, std::string>>& class_list);
+
   // allow open_class
   int unblock_class(const string& cname)
   {

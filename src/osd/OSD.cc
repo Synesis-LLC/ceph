@@ -6484,6 +6484,9 @@ COMMAND("cls_enable" \
         " name=class_name,type=CephString,req=true",
         "unblock class on-demand loading",
         "osd", "rw", "cli,rest")
+COMMAND("cls_list",
+        "list classes and states",
+        "osd", "r", "cli,rest")
 };
 
 void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, bufferlist& data)
@@ -6944,6 +6947,20 @@ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, buffe
     r = class_handler->unblock_class(class_name);
     if (r != 0) {
       dout(0) << "class \"" << class_name << "\" unblock failed" << dendl;
+    }
+  }
+  else if (prefix == "cls_list") {
+    std::list<std::pair<std::string, std::string>> class_list;
+    r = class_handler->list_classes(class_list);
+    if (r != 0) {
+      dout(0) << "list classes failed" << dendl;
+    } else {
+      f->open_object_section("cls");
+      for (const auto& class_state : class_list) {
+        f->dump_string(class_state.first.c_str(), class_state.second.c_str());
+      }
+      f->close_section();
+      f->flush(ds);
     }
   }
 
