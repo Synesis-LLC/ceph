@@ -24,6 +24,7 @@
 #include "include/memory.h"
 #include "osd/osd_types.h"
 #include "common/TrackedOp.h"
+#include "ClassHandler.h"
 
 /**
  * The OpRequest takes in a Message* and takes over a single reference
@@ -60,16 +61,17 @@ struct OpRequest : public TrackedOp {
 
   struct ClassInfo {
     ClassInfo(const std::string& name, bool read, bool write,
-        bool whitelisted) :
-      name(name), read(read), write(write), whitelisted(whitelisted)
+        bool whitelisted, ClassHandler::ClassDataPtr&& cls) :
+      name(name), read(read), write(write), whitelisted(whitelisted), cls(std::move(cls))
     {}
     const std::string name;
     const bool read, write, whitelisted;
+    ClassHandler::ClassDataPtr cls;
   };
 
   void add_class(const std::string& name, bool read, bool write,
-      bool whitelisted) {
-    classes_.emplace_back(name, read, write, whitelisted);
+      bool whitelisted, ClassHandler::ClassDataPtr&& cls) {
+    classes_.emplace_back(name, read, write, whitelisted, std::move(cls));
   }
 
   std::vector<ClassInfo> classes() const {

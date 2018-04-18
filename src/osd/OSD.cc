@@ -6930,6 +6930,8 @@ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, buffe
     cmd_getval(cct, cmdmap, "class_name", class_name);
     r = class_handler->reload_class(class_name);
     if (r != 0) {
+      f->dump_format("class \"%s\" reload failed", class_name.c_str());
+      f->flush(ds);
       dout(0) << "class \"" << class_name << "\" reload failed" << dendl;
     }
   }
@@ -6938,6 +6940,9 @@ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, buffe
     cmd_getval(cct, cmdmap, "class_name", class_name);
     r = class_handler->unload_and_block_class(class_name);
     if (r != 0) {
+      //TODO: return error descrription from class handler
+      f->dump_format("class \"%s\" unload_and_block failed", class_name.c_str());
+      f->flush(ds);
       dout(0) << "class \"" << class_name << "\" unload_and_block failed" << dendl;
     }
   }
@@ -6946,6 +6951,8 @@ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, buffe
     cmd_getval(cct, cmdmap, "class_name", class_name);
     r = class_handler->unblock_class(class_name);
     if (r != 0) {
+      f->dump_format("class \"%s\" unblock failed", class_name.c_str());
+      f->flush(ds);
       dout(0) << "class \"" << class_name << "\" unblock failed" << dendl;
     }
   }
@@ -10100,7 +10107,7 @@ int OSD::init_op_flags(OpRequestRef& op)
 	bp.copy(iter->op.cls.method_len, mname);
 
 	ClassHandler::ClassDataPtr cls;
-	int r = class_handler->open_class(cname, cls);
+	int r = class_handler->open_class(cname, &cls);
 	if (r) {
 	  derr << "class " << cname << " open got " << cpp_strerror(r) << dendl;
 	  if (r == -ENOENT)
@@ -10132,7 +10139,8 @@ int OSD::init_op_flags(OpRequestRef& op)
 	  op->set_class_write();
         if (is_promote)
           op->set_promote();
-        op->add_class(cname, is_read, is_write, cls->whitelisted);
+        bool w = cls->whitelisted;
+        op->add_class(cname, is_read, is_write, w, std::move(cls));
 	break;
       }
 

@@ -49,28 +49,36 @@ int ClassHandler::_open_class(const string& cname, ClassData **pcls)
   return 0;
 }
 
+//TODO: class state struct with formatter
 int ClassHandler::list_classes(std::list<std::pair<std::string, std::string>>& class_list)
 {
   Mutex::Locker lock(mutex);
   for (const auto& cls : classes) {
+    std::stringstream ss;
     auto cgd = _get_class_guard(cls.first);
     if (cgd) {
-      class_list.emplace_back(cls.first, cgd->is_blocked() ? "blocked" : "active");
+      ss << (cgd->is_blocked() ? "blocked" : "active");
     } else {
-      class_list.emplace_back(cls.first, "unknown");
+      ss << "unknown";
     }
+    ss << "," << ClassData::status_to_string(cls.second.status);
+    if (cls.second.whitelisted) {
+      ss << ",whitelisted";
+    }
+    ss << ",refcount=" << cgd->refcount;
+    class_list.emplace_back(cls.first, ss.str());
   }
   return 0;
 }
 
-int ClassHandler::open_class(const string& cname, ClassDataPtr& pcls)
+int ClassHandler::open_class(const string& cname, ClassDataPtr* pcls)
 {
   // get class guard if it already present
   ClassDataGuard* cdg = _get_class_guard(cname);
   if (cdg != nullptr) {
     if (!cdg->open_class_maybe_wait(cct->_conf->osd_open_class_timeout)) {
       ldout(cct, 0) << "open class wait timeout" << dendl;
-      return -EPERM;
+      return -ENOENT;
     }
   }
 
@@ -87,15 +95,15 @@ int ClassHandler::open_class(const string& cname, ClassDataPtr& pcls)
     if (cdg != nullptr) {
       if (!cdg->open_class_maybe_wait(cct->_conf->osd_open_class_timeout)) {
         ldout(cct, 0) << "open class wait timeout" << dendl;
-        return -EPERM;
+        return -ENOENT;
       }
     } else {
       ldout(cct, 0) << "failed get class guard" << dendl;
-      return -EPERM;
+      return -ENOENT;
     }
   }
 
-  pcls = ClassDataPtr(cdg, _pcls);
+  *pcls = ClassDataPtr(cdg, _pcls);
   return 0;
 }
 
@@ -163,7 +171,7 @@ int ClassHandler::open_all_classes()
       ldout(cct, 10) << __func__ << " found " << cname << dendl;
       ClassDataPtr cls;
       // skip classes that aren't in 'osd class load list'
-      r = open_class(cname, cls);
+      r = open_class(cname, &cls);
       if (r < 0 && r != -EPERM)
         goto out;
     }

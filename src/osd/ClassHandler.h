@@ -59,6 +59,19 @@ public:
       CLASS_OPEN,            // initialized, usable
     } status;
 
+    static std::string status_to_string(Status status)
+    {
+      switch(status){
+      case CLASS_UNKNOWN: return "CLASS_UNKNOWN";
+      case CLASS_MISSING: return "CLASS_MISSING";
+      case CLASS_MISSING_DEPS: return "CLASS_MISSING_DEPS";
+      case CLASS_INITIALIZING: return "CLASS_INITIALIZING";
+      case CLASS_OPEN: return "CLASS_OPEN";
+      default:
+        return "unknown";
+      };
+    }
+
     string name;
     ClassHandler *handler;
     void *handle;
@@ -105,6 +118,7 @@ public:
     }
   };
 
+  //TODO: move guard into ClassData, make ClassDataPtr template pointer for any class resource: filter, method, class
   struct ClassDataGuard
   {
     ClassDataGuard() :
@@ -141,7 +155,9 @@ public:
     void decref()
     {
       refcount--;
-      close_class_cv.notify_all();
+      if (refcount == 0) {
+        close_class_cv.notify_all();
+      }
     }
 
     std::mutex open_class_mutex;
@@ -150,12 +166,18 @@ public:
     bool open_class_wait(int timeout_s)
     {
       if (timeout_s > 0) {
-        std::unique_lock<std::mutex>lock(open_class_mutex);
-        return open_class_cv.wait_for(lock, std::chrono::seconds(timeout_s),
-                                      [this]()->bool{return this->is_blocked();});
+        if (this->is_blocked()) {
+          std::unique_lock<std::mutex>lock(open_class_mutex);
+          return open_class_cv.wait_for(lock, std::chrono::seconds(timeout_s),
+                                        [this]()->bool{return this->is_blocked();});
+        } else {
+          return true;
+        }
       } else if (timeout_s < 0) {
-        std::unique_lock<std::mutex>lock(open_class_mutex);
-        open_class_cv.wait(lock, [this]()->bool{return this->is_blocked();});
+        if (this->is_blocked()) {
+          std::unique_lock<std::mutex>lock(open_class_mutex);
+          open_class_cv.wait(lock, [this]()->bool{return this->is_blocked();});
+        }
         return true;
       } else {
         return false;
@@ -191,12 +213,18 @@ public:
     bool close_class_wait(int timeout_s)
     {
       if (timeout_s > 0) {
-        std::unique_lock<std::mutex>lock(close_class_mutex);
-        return close_class_cv.wait_for(lock, std::chrono::seconds(timeout_s),
-                                       [this]()->bool{return this->is_used();});
+        if (this->is_used()) {
+          std::unique_lock<std::mutex>lock(close_class_mutex);
+          return close_class_cv.wait_for(lock, std::chrono::seconds(timeout_s),
+                                         [this]()->bool{return this->is_used();});
+        } else {
+          return true;
+        }
       } else if (timeout_s < 0) {
-        std::unique_lock<std::mutex>lock(close_class_mutex);
-        close_class_cv.wait(lock, [this]()->bool{return this->is_used();});
+        if (this->is_used()) {
+          std::unique_lock<std::mutex>lock(close_class_mutex);
+          close_class_cv.wait(lock, [this]()->bool{return this->is_used();});
+        }
         return true;
       } else {
         return false;
@@ -204,14 +232,49 @@ public:
     }
   };
 
-  struct ClassDataPtr
+  class ClassDataPtr
   {
   private:
     ClassDataGuard* cdg;
     ClassData* cls;
   public:
-    ClassDataPtr() = default;
-    ~ClassDataPtr()
+    ClassDataPtr() :
+      cdg(nullptr),
+      cls(nullptr)
+    {}
+    ClassDataPtr(const ClassDataPtr& src) :
+      cdg(src.cdg),
+      cls(src.cls)
+    {
+      if (cdg) {
+        cdg->incref();
+      }
+    }
+    ClassDataPtr(ClassDataPtr&& src) :
+      cdg(src.cdg),
+      cls(src.cls)
+    {
+      src.cdg = nullptr;
+      src.cls = nullptr;
+    }
+    ClassDataPtr& operator=(const ClassDataPtr& src)
+    {
+      cdg = src.cdg;
+      cls = src.cls;
+      if (cdg) {
+        cdg->incref();
+      }
+      return *this;
+    }
+    ClassDataPtr& operator=(ClassDataPtr&& src)
+    {
+      cdg = src.cdg;
+      cls = src.cls;
+      src.cdg = nullptr;
+      src.cls = nullptr;
+      return *this;
+    }
+    virtual ~ClassDataPtr()
     {
       if (cdg) {
         cdg->decref();
@@ -274,7 +337,7 @@ public:
   int open_all_classes();
 
   void add_embedded_class(const string& cname);
-  int open_class(const string& cname, ClassDataPtr& pcls);
+  int open_class(const string& cname, ClassDataPtr* pcls);
 
   int list_classes(std::list<std::pair<std::string, std::string>>& class_list);
 
