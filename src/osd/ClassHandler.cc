@@ -55,6 +55,7 @@ int ClassHandler::open_class(const string& cname, ClassDataPtr& pcls)
   ClassDataGuard* cdg = _get_class_guard(cname);
   if (cdg != nullptr) {
     if (!cdg->open_class_maybe_wait(cct->_conf->osd_open_class_timeout)) {
+      ldout(cct, 0) << "open class wait timeout" << dendl;
       return -EPERM;
     }
   }
@@ -62,6 +63,7 @@ int ClassHandler::open_class(const string& cname, ClassDataPtr& pcls)
   ClassData* _pcls = nullptr;
   int err = _open_class(cname, &_pcls);
   if (err) {
+    ldout(cct, 0) << "open class failed" << dendl;
     return err;
   }
 
@@ -70,10 +72,11 @@ int ClassHandler::open_class(const string& cname, ClassDataPtr& pcls)
     cdg = _get_class_guard(cname);
     if (cdg != nullptr) {
       if (!cdg->open_class_maybe_wait(cct->_conf->osd_open_class_timeout)) {
+        ldout(cct, 0) << "open class wait timeout" << dendl;
         return -EPERM;
       }
-    }
-    if (cdg != nullptr) {
+    } else {
+      ldout(cct, 0) << "failed get class guard" << dendl;
       return -EPERM;
     }
   }
@@ -86,6 +89,7 @@ int ClassHandler::close_class(const string& cname, bool disable, bool block_open
 {
   ClassDataGuard* cdg = _get_class_guard(cname);
   if (cdg == nullptr) {
+    ldout(cct, 0) << "failed get class guard" << dendl;
     return -ENOENT;
   }
 
@@ -95,6 +99,7 @@ int ClassHandler::close_class(const string& cname, bool disable, bool block_open
   if (!cdg->close_class_wait(cct->_conf->osd_close_class_timeout)) {
     // timeout
     cdg->unblock();
+    ldout(cct, 0) << "close class timeout" << dendl;
     return -EPERM;
   }
 
@@ -104,6 +109,7 @@ int ClassHandler::close_class(const string& cname, bool disable, bool block_open
     auto cls_it = classes.find(cname);
     if (cls_it == classes.end()) {
       cdg->unblock();
+      ldout(cct, 0) << "class not exist" << dendl;
       return -ENOENT;
     }
     cls = &cls_it->second;
@@ -112,6 +118,7 @@ int ClassHandler::close_class(const string& cname, bool disable, bool block_open
   int err = _unload_class(cls);
   if (err) {
     cdg->unblock();
+    ldout(cct, 0) << "unload class failed" << dendl;
     return err;
   }
 
@@ -216,6 +223,7 @@ ClassHandler::ClassData *ClassHandler::_get_class(const string& cname,
 int ClassHandler::_unload_class(ClassData *cls)
 {
   if (cls->status != ClassData::CLASS_OPEN) {
+    ldout(cct, 0) << "class is not opened" << dendl;
     return -EPERM;
   }
 

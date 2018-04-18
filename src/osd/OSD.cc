@@ -6472,6 +6472,18 @@ COMMAND("compact",
         "compact object store's omap. "
         "WARNING: Compaction probably slows your requests",
         "osd", "rw", "cli,rest")
+COMMAND("cls_reload" \
+        " name=class_name,type=CephString,req=true",
+        "unload and let class be loaded on-demand",
+        "osd", "rw", "cli,rest")
+COMMAND("cls_disable" \
+        " name=class_name,type=CephString,req=true",
+        "unload and block class on-demand loading",
+        "osd", "rw", "cli,rest")
+COMMAND("cls_enable" \
+        " name=class_name,type=CephString,req=true",
+        "unblock class on-demand loading",
+        "osd", "rw", "cli,rest")
 };
 
 void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, bufferlist& data)
@@ -6908,6 +6920,31 @@ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, buffe
             << time_span.count()
             << " seconds" << dendl;
     ss << "compacted omap in " << time_span.count() << " seconds";
+  }
+
+  else if (prefix == "cls_reload") {
+    std::string class_name;
+    cmd_getval(cct, cmdmap, "class_name", class_name);
+    r = class_handler->reload_class(class_name);
+    if (r != 0) {
+      dout(0) << "class \"" << class_name << "\" reload failed" << dendl;
+    }
+  }
+  else if (prefix == "cls_disable") {
+    std::string class_name;
+    cmd_getval(cct, cmdmap, "class_name", class_name);
+    r = class_handler->unload_and_block_class(class_name);
+    if (r != 0) {
+      dout(0) << "class \"" << class_name << "\" unload_and_block failed" << dendl;
+    }
+  }
+  else if (prefix == "cls_enable") {
+    std::string class_name;
+    cmd_getval(cct, cmdmap, "class_name", class_name);
+    r = class_handler->unblock_class(class_name);
+    if (r != 0) {
+      dout(0) << "class \"" << class_name << "\" unblock failed" << dendl;
+    }
   }
 
   else {

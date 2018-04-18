@@ -12,6 +12,7 @@
 
 //forward declaration
 class CephContext;
+class OSD;
 
 class ClassHandler
 {
@@ -140,7 +141,7 @@ public:
     void decref()
     {
       refcount--;
-      close_class_cv.notify_one();
+      close_class_cv.notify_all();
     }
 
     std::mutex open_class_mutex;
@@ -232,6 +233,7 @@ public:
   };
 
 private:
+  Mutex mutex;
   map<string, ClassData> classes;
 
   std::mutex class_guards_mutex;
@@ -267,8 +269,6 @@ private:
   int _unload_class(ClassData *cls);
 
 public:
-  Mutex mutex;//TODO: cleanup mutex usage
-
   explicit ClassHandler(CephContext *cct_) : cct(cct_), mutex("ClassHandler") {}
 
   int open_all_classes();
@@ -304,6 +304,8 @@ public:
   void unregister_class(ClassData *cls);
 
   void shutdown();
+
+  friend void cephd_preload_rados_classes(OSD *osd);
 };
 
 
