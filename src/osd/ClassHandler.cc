@@ -235,10 +235,10 @@ ClassHandler::ClassData *ClassHandler::_get_class(const string& cname,
     ldout(cct, 10) << "_get_class adding new class name " << cname << " " << cls << dendl;
     cls->name = cname;
     cls->handler = this;
-    cls->whitelisted = in_class_list(cname, cct->_conf->osd_class_default_list);
 
     class_guards[cname];
   }
+  cls->whitelisted = in_class_list(cname, cct->_conf->osd_class_default_list);
   return cls;
 }
 
@@ -255,7 +255,6 @@ int ClassHandler::_unload_class(ClassData *cls)
   cls->missing_dependencies.clear();
   dlclose(cls->handle);
   cls->handle = nullptr;
-  cls->whitelisted = false;
 
   cls->status = ClassData::CLASS_UNKNOWN;
 

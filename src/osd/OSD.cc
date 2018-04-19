@@ -10107,6 +10107,8 @@ int OSD::init_op_flags(OpRequestRef& op)
 	bp.copy(iter->op.cls.method_len, mname);
 
 	ClassHandler::ClassDataPtr cls;
+	//TODO: replace with get_class_method_flags and get_class_info (without explicit open_class)
+	//TODO: move ClassInfo to ClassHandler.h
 	int r = class_handler->open_class(cname, &cls);
 	if (r) {
 	  derr << "class " << cname << " open got " << cpp_strerror(r) << dendl;
@@ -10139,8 +10141,7 @@ int OSD::init_op_flags(OpRequestRef& op)
 	  op->set_class_write();
         if (is_promote)
           op->set_promote();
-        bool w = cls->whitelisted;
-        op->add_class(cname, is_read, is_write, w, std::move(cls));
+        op->add_class(cname, is_read, is_write, cls->whitelisted);
 	break;
       }
 

@@ -169,14 +169,14 @@ public:
         if (this->is_blocked()) {
           std::unique_lock<std::mutex>lock(open_class_mutex);
           return open_class_cv.wait_for(lock, std::chrono::seconds(timeout_s),
-                                        [this]()->bool{return this->is_blocked();});
+                                        [this]()->bool{return !this->is_blocked();});
         } else {
           return true;
         }
       } else if (timeout_s < 0) {
         if (this->is_blocked()) {
           std::unique_lock<std::mutex>lock(open_class_mutex);
-          open_class_cv.wait(lock, [this]()->bool{return this->is_blocked();});
+          open_class_cv.wait(lock, [this]()->bool{return !this->is_blocked();});
         }
         return true;
       } else {
@@ -216,14 +216,14 @@ public:
         if (this->is_used()) {
           std::unique_lock<std::mutex>lock(close_class_mutex);
           return close_class_cv.wait_for(lock, std::chrono::seconds(timeout_s),
-                                         [this]()->bool{return this->is_used();});
+                                         [this]()->bool{return !this->is_used();});
         } else {
           return true;
         }
       } else if (timeout_s < 0) {
         if (this->is_used()) {
           std::unique_lock<std::mutex>lock(close_class_mutex);
-          close_class_cv.wait(lock, [this]()->bool{return this->is_used();});
+          close_class_cv.wait(lock, [this]()->bool{return !this->is_used();});
         }
         return true;
       } else {
