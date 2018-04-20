@@ -194,6 +194,22 @@ def make_response(fmt, output, statusmsg, errorcode):
 
     return flask.make_response(response, errorcode)
 
+def is_perm_rw(perm):
+    return '*' in perm or 'w' in perm
+
+def get_config_key(cluster, key):
+    ret, outbuf, outs = ceph_argparse.json_command(
+        cluster,
+        ('mon', ''),
+        prefix='config-key get',
+        argdict={"key" : key, "format" : "json", "module" : "config-key"},
+        timeout=30,
+    )
+    if ret:
+        err = "Can't get config-key: {0}".format(outs)
+        flask.Flask(__name__).logger.error(err)
+        raise EnvironmentError(ret, err)
+    return outbuf
 
 def handler(catchall_path=None, fmt=None, target=None):
     """Main endpoint handler.
@@ -313,6 +329,7 @@ def handler(catchall_path=None, fmt=None, target=None):
     argdict['format'] = fmt or 'plain'
     argdict['module'] = found['module']
     argdict['perm'] = found['perm']
+
     if pgid:
         argdict['pgid'] = pgid
 
@@ -320,6 +337,20 @@ def handler(catchall_path=None, fmt=None, target=None):
         cmdtarget = ('mon', '')
 
     flask.current_app.logger.debug("Sending command prefix %s argdict %s", prefix, argdict)
+
+    if is_perm_rw(found['perm']):
+        dryrun = False
+        try:
+            dryrun = get_config_key(flask.current_app.ceph_cluster, "restapi/dryrun") != '0'
+        except:
+            pass
+        if dryrun:
+            return make_response(
+                fmt,
+                "dry-runned\n",
+                "",
+                200,
+            )
 
     for _ in range(DEFAULT_TRIES):
         ret, outbuf, outs = ceph_argparse.json_command(
