@@ -1,3 +1,9 @@
+ceph (12.2.2-5.1) stable; urgency=medium
+
+  * mgr expects plain osd metadata
+
+ -- Aleksei Gutikov <aleksey.gutikov@synesis.ru>  Tue, 24 Apr 2018 10:42:34 +0300
+
 ceph (12.2.2-5) stable; urgency=medium
 
   * add crush_location to osd metadata
