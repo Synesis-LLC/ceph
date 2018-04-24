@@ -1,3 +1,10 @@
+ceph (12.2.2-5) stable; urgency=medium
+
+  * add crush_location to osd metadata
+  * ceph-rest-api: add dryrun flag: config-key restapi/dryrun
+
+ -- Aleksei Gutikov <aleksey.gutikov@synesis.ru>  Tue, 24 Apr 2018 09:22:38 +0300
+
 ceph (12.2.2-4) stable; urgency=medium
 
   * backported changes subset for blustore from v12.2.4
