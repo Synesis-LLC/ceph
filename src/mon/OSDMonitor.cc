@@ -1504,11 +1504,9 @@ int OSDMonitor::dump_osd_metadata(int osd, Formatter *f, ostream *err)
   for (map<string,string>::iterator p = m.begin(); p != m.end(); ++p) {
     f->dump_string(p->first.c_str(), p->second);
   }
-  f->open_object_section("crush_location");
   for (const auto& p : osdmap.crush->get_full_location(osd)) {
-    f->dump_string(p.first.c_str(), p.second);
+    f->dump_string(("crush_location_" + p.first).c_str(), p.second);
   }
-  f->close_section();
   return 0;
 }
 
