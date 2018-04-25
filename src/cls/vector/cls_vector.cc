@@ -26,31 +26,31 @@ struct record_format
 {
   enum VECTOR_ELEMENT_FORMAT
   {
-    s8,
-    s16,
-    s32,
-    s64,
+    i8,
+    i16,
+    i32,
+    i64,
     u8,
     u16,
     u32,
     u64,
-    f,
-    d
+    f32,
+    f64
   } vformat;
 
   inline size_t get_element_size() const
   {
     switch (vformat) {
-    case s8: return sizeof(int8_t);
-    case s16: return sizeof(int8_t);
-    case s32: return sizeof(int8_t);
-    case s64: return sizeof(int8_t);
+    case i8: return sizeof(int8_t);
+    case i16: return sizeof(int8_t);
+    case i32: return sizeof(int8_t);
+    case i64: return sizeof(int8_t);
     case u8: return sizeof(uint8_t);
     case u16: return sizeof(uint16_t);
     case u32: return sizeof(uint32_t);
     case u64: return sizeof(uint64_t);
-    case f: return sizeof(float);
-    case d: return sizeof(double);
+    case f32: return sizeof(float);
+    case f64: return sizeof(double);
     }
     return 1;
   }
@@ -58,29 +58,30 @@ struct record_format
   inline const char* ve_format_to_str() const
   {
     switch (vformat) {
-    case s8: return "s8";
-    case s16: return "s16";
-    case s32: return "s32";
-    case s64: return "s64";
+    case i8: return "i8";
+    case i16: return "i16";
+    case i32: return "i32";
+    case i64: return "i64";
     case u8: return "u8";
     case u16: return "u16";
     case u32: return "u32";
     case u64: return "u64";
-    case f: return "f";
-    case d: return "d";
+    case f32: return "f32";
+    case f64: return "f64";
     }
     return "-";
   }
 
   static inline VECTOR_ELEMENT_FORMAT ve_format_from_str(char* ptr, char** pptr)
   {
-    if (ptr[0] == 'd') {
-      *pptr = ptr + 1;
-      return d;
-    }
     if (ptr[0] == 'f') {
-      *pptr = ptr + 1;
-      return f;
+      if (ptr[1] == '3' && ptr[2] == '2') {
+        *pptr = ptr + 3;
+        return f32;
+      } else if (ptr[1] == '6' && ptr[2] == '4') {
+        *pptr = ptr + 3;
+        return f64;
+      }
     }
     if (ptr[0] == 'u') {
       if (ptr[1] == '8') {
@@ -100,16 +101,16 @@ struct record_format
     if (ptr[0] == 's') {
       if (ptr[1] == '8') {
         *pptr = ptr + 2;
-        return s8;
+        return i8;
       } else if (ptr[1] == '1' && ptr[2] == '6') {
         *pptr = ptr + 3;
-        return s16;
+        return i16;
       } else if (ptr[1] == '3' && ptr[2] == '2') {
         *pptr = ptr + 3;
-        return s32;
+        return i32;
       } else if (ptr[1] == '6' && ptr[2] == '4') {
         *pptr = ptr + 3;
-        return s64;
+        return i64;
       }
     }
 
@@ -147,7 +148,9 @@ struct record_format
           ptr++;
           r.vector_length = std::strtol(ptr, &ptr, 0);
 
-          if (r.get_vector_size() + r.vector_offset <= r.size) {
+          // allow formats like 0+0:i32x128
+          if ((r.size == 0 && r.vector_offset == 0)
+              || r.get_vector_size() + r.vector_offset <= r.size) {
             return r;
           }
         }
@@ -253,16 +256,16 @@ std::shared_ptr<base_record> base_record::read_from(const bufferlist& bl, size_t
   }
   std::shared_ptr<base_record> r;
   switch (format.vformat) {
-  case record_format::s8:  r = std::make_shared<record<int8_t>>(format); break;
-  case record_format::s16: r = std::make_shared<record<int16_t>>(format); break;
-  case record_format::s32: r = std::make_shared<record<int32_t>>(format); break;
-  case record_format::s64: r = std::make_shared<record<int64_t>>(format); break;
+  case record_format::i8:  r = std::make_shared<record<int8_t>>(format); break;
+  case record_format::i16: r = std::make_shared<record<int16_t>>(format); break;
+  case record_format::i32: r = std::make_shared<record<int32_t>>(format); break;
+  case record_format::i64: r = std::make_shared<record<int64_t>>(format); break;
   case record_format::u8:  r = std::make_shared<record<uint8_t>>(format); break;
   case record_format::u16: r = std::make_shared<record<uint16_t>>(format); break;
   case record_format::u32: r = std::make_shared<record<uint32_t>>(format); break;
   case record_format::u64: r = std::make_shared<record<uint64_t>>(format); break;
-  case record_format::f:   r = std::make_shared<record<float>>(format); break;
-  case record_format::d:   r = std::make_shared<record<double>>(format); break;
+  case record_format::f32:   r = std::make_shared<record<float>>(format); break;
+  case record_format::f64:   r = std::make_shared<record<double>>(format); break;
   }
   bl.copy(offset, r->data.size(), (char*)r->data.data());
   return r;
