@@ -5339,6 +5339,10 @@ std::vector<Option> get_rgw_options() {
     .set_default(false)
     .set_description("Always delete objects when delete bucket (allow delete not empty buckets)"),
 
+    Option("rgw_remove_bucket_by_lc", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(false)
+    .set_description("Remove bucket by lifecycle after all objects"),
+
     Option("rgw_trace_deletes", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(false)
     .set_description("Enable extra logging for delete operations"),

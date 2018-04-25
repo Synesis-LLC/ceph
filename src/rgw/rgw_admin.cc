@@ -291,6 +291,8 @@ void usage()
   cout << "                             subuser keys\n";
   cout << "   --purge-objects           remove a bucket's objects before deleting it\n";
   cout << "                             (NOTE: required to delete a non-empty bucket)\n";
+  cout << "   --remove-bucket-by-lc     option to 'bucket rm' command,\n";
+  cout << "                             remove bucket by lifecycle after all children\n";
   cout << "   --sync-stats              option to 'user stats', update user stats with current\n";
   cout << "                             stats reported by user's buckets indexes\n";
   cout << "   --reset-stats             option to 'user stats', reset stats in accordance with user buckets\n";
@@ -2571,6 +2573,7 @@ int main(int argc, const char **argv)
   int purge_keys = false;
   int yes_i_really_mean_it = false;
   int delete_child_objects = false;
+  int remove_bucket_by_lc = false;
   int fix = false;
   int remove_bad = false;
   int check_head_obj_locator = false;
@@ -2835,6 +2838,8 @@ int main(int argc, const char **argv)
 	categories[*iter] = true;
       }
     } else if (ceph_argparse_binary_flag(args, i, &delete_child_objects, NULL, "--purge-objects", (char*)NULL)) {
+      // do nothing
+    } else if (ceph_argparse_binary_flag(args, i, &remove_bucket_by_lc, NULL, "--remove_bucket_by_lc", (char*)NULL)) {
       // do nothing
     } else if (ceph_argparse_binary_flag(args, i, &pretty_format, NULL, "--pretty-format", (char*)NULL)) {
       // do nothing
@@ -4691,6 +4696,7 @@ int main(int argc, const char **argv)
   bucket_op.set_object(object);
   bucket_op.set_check_objects(check_objects);
   bucket_op.set_delete_children(delete_child_objects);
+  bucket_op.set_remove_bucket_by_lc(remove_bucket_by_lc);
   bucket_op.set_fix_index(fix);
   bucket_op.set_max_aio(max_concurrent_ios);
 

@@ -185,6 +185,8 @@ extern int rgw_link_bucket(RGWRados* store,
 extern int rgw_unlink_bucket(RGWRados *store, const rgw_user& user_id,
                              const string& tenant_name, const string& bucket_name, bool update_entrypoint = true);
 
+extern int rgw_remove_bucket_by_lc(RGWRados *store, rgw_bucket& bucket);
+
 extern int rgw_remove_object(RGWRados *store, RGWBucketInfo& bucket_info, rgw_bucket& bucket, rgw_obj_key& key);
 extern int rgw_remove_bucket(RGWRados *store, rgw_bucket& bucket, bool delete_children);
 extern int rgw_remove_bucket_bypass_gc(RGWRados *store, rgw_bucket& bucket, size_t concurrent_max,
@@ -218,6 +220,7 @@ struct RGWBucketAdminOpState {
   bool check_objects;
   bool fix_index;
   bool delete_child_objects;
+  bool remove_bucket_by_lc;
   bool bucket_stored;
   int max_aio;
 
@@ -229,6 +232,7 @@ struct RGWBucketAdminOpState {
   void set_check_objects(bool value) { check_objects = value; }
   void set_fix_index(bool value) { fix_index = value; }
   void set_delete_children(bool value) { delete_child_objects = value; }
+  void set_remove_bucket_by_lc(bool value) { remove_bucket_by_lc = value; }
 
   void set_max_aio(int value) { max_aio = value; }
 
@@ -266,6 +270,7 @@ struct RGWBucketAdminOpState {
   bool will_fetch_stats() { return stat_buckets; }
   bool will_fix_index() { return fix_index; }
   bool will_delete_children() { return delete_child_objects; }
+  bool will_remove_bucket_by_lc() { return remove_bucket_by_lc; }
   bool will_check_objects() { return check_objects; }
   bool is_user_op() { return !uid.empty(); }
   bool is_system_op() { return uid.empty(); }
@@ -273,7 +278,7 @@ struct RGWBucketAdminOpState {
   int get_max_aio() { return max_aio; }
 
   RGWBucketAdminOpState() : list_buckets(false), stat_buckets(false), check_objects(false), 
-                            fix_index(false), delete_child_objects(false),
+                            fix_index(false), delete_child_objects(false), remove_bucket_by_lc(false),
                             bucket_stored(false)  {}
 };
 

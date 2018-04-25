@@ -1488,6 +1488,7 @@ OPTION(rgw_gc_max_concurrent_ios, OPT_INT) // Maximum number of concurrent io op
 OPTION(rgw_gc_max_list, OPT_INT) // Maximum number of entries per rgw gc_list op
 OPTION(rgw_remove_object_always_bypass_gc, OPT_BOOL) // always bypass gc
 OPTION(rgw_remove_bucket_always_delete_children, OPT_BOOL) // always delete objects in bucket
+OPTION(rgw_remove_bucket_by_lc, OPT_BOOL) // remove bucket by lifecycle after all objects
 OPTION(rgw_remove_object_max_concurrent_ios, OPT_INT) // Maximum number of concurrent io operations
                                                           // per single rgw object remove request
 OPTION(rgw_trace_deletes, OPT_BOOL) // Trace rgw delete ops

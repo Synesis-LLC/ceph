@@ -500,6 +500,36 @@ static bool bucket_object_check_filter(const string& oid)
   return rgw_obj_key::oid_to_key_in_ns(oid, &key, ns);
 }
 
+int rgw_remove_bucket_by_lc(RGWRados *store, rgw_bucket& bucket)
+{
+    RGWBucketInfo bucket_info;
+    map<string, bufferlist> attrs;
+    RGWObjectCtx obj_ctx(store);
+
+    dout(5) << "rgw_remove_bucket_by_lc: set remove_bucket_by_lc attr " \
+            "for bucket: " << bucket.name << dendl;
+
+    int r = store->get_bucket_info(obj_ctx, "", bucket.name, bucket_info, NULL, &attrs);
+    if (r < 0) {
+      dout(1) << "rgw_remove_bucket_by_lc: ERROR: could not get bucket info " \
+                 "for bucket: " << bucket.name << " err: " << cpp_strerror(-r) << dendl;
+      return -r;
+    }
+
+    bufferlist bl;
+    ::encode("true", bl);
+    attrs[RGW_ATTR_LC_RM_BUCKET] = bl;
+
+    r = store->put_bucket_instance_info(bucket_info, false, real_time(), &attrs);
+    if (r < 0) {
+      dout(1) << "rgw_remove_bucket_by_lc: ERROR failed writing bucket instance info " \
+                 "for bucket: " << bucket.name << " err: " << cpp_strerror(-r) << dendl;
+      return -r;
+    }
+
+    return 0;
+}
+
 int rgw_remove_object(RGWRados *store, RGWBucketInfo& bucket_info, rgw_bucket& bucket, rgw_obj_key& key)
 {
   RGWObjectCtx rctx(store);
@@ -973,6 +1003,7 @@ int RGWBucket::remove(RGWBucketAdminOpState& op_state, bool bypass_gc,
                       bool keep_index_consistent, std::string *err_msg)
 {
   bool delete_children = op_state.will_delete_children();
+  bool remove_bucket_by_lc = op_state.will_remove_bucket_by_lc();
   rgw_bucket bucket = op_state.get_bucket();
   int ret;
 
@@ -981,10 +1012,14 @@ int RGWBucket::remove(RGWBucketAdminOpState& op_state, bool bypass_gc,
       ret = rgw_remove_bucket_bypass_gc(store, bucket, op_state.get_max_aio(), keep_index_consistent);
     } else {
       set_err_msg(err_msg, "purge objects should be set for gc to be bypassed");
-      return -EINVAL;
+      ret = -EINVAL;
     }
   } else {
     ret = rgw_remove_bucket(store, bucket, delete_children);
+  }
+
+  if (ret < 0 && remove_bucket_by_lc) {
+      ret = rgw_remove_bucket_by_lc(store, bucket);
   }
 
   if (ret < 0) {

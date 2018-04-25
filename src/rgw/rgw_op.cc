@@ -2980,6 +2980,19 @@ void RGWDeleteBucket::execute()
   
   op_ret = store->check_bucket_empty(s->bucket_info);
   if (op_ret < 0) {
+
+    // check if bucket should be deleted by lifecycle
+    if (op_ret == -ENOTEMPTY && store->ctx()->_conf->rgw_remove_bucket_by_lc) {
+      op_ret = rgw_remove_bucket_by_lc(store, s->bucket);
+
+      // set 202 Accepted status for S3 clients
+      if (op_ret == 0) {
+          op_ret = -STATUS_ACCEPTED;
+          log_guard.enoent = false;
+          log_guard.succeeded = true;
+      }
+    }
+
     return;
   }
 

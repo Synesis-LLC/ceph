@@ -337,7 +337,7 @@ int RGWLC::bucket_lc_process(string& shard_id)
   pthread_t thread_id;
   
   thread_id = pthread_self();
-  dout(20) << "RGWLC::bucket_lc_process: " << thread_id << " shard_id: " << shard_id << dendl;
+  dout(20) << "RGWLC::bucket_lc_process:" << thread_id << " shard_id: " << shard_id << dendl;
 
   int ret = store->get_bucket_info(obj_ctx, bucket_tenant, bucket_name, bucket_info, NULL, &bucket_attrs);
   if (ret < 0) {
@@ -353,6 +353,18 @@ int RGWLC::bucket_lc_process(string& shard_id)
 
   RGWRados::Bucket target(store, bucket_info);
   RGWRados::Bucket::List list_op(&target);
+
+  bool remove_bucket_by_lc = bucket_attrs.find(RGW_ATTR_LC_RM_BUCKET) != bucket_attrs.end();
+  bool is_bucket_empty = store->check_bucket_empty(bucket_info) == 0;  
+
+  if (remove_bucket_by_lc && is_bucket_empty) {
+    RGWBucketAdminOpState bucket_op;
+    bucket_op.set_bucket_name(bucket_name);
+
+    ret = RGWBucketAdminOp::remove_bucket(store, bucket_op, false, true);
+    ldout(cct, 5) << "RGWLC::bucket_lc_process:" << thread_id << " remove bucket: " << bucket_name << " by lifecycle" << dendl;
+    return ret;
+  }
 
   map<string, bufferlist>::iterator aiter = bucket_attrs.find(RGW_ATTR_LC);
   if (aiter == bucket_attrs.end())
@@ -435,8 +447,7 @@ int RGWLC::bucket_lc_process(string& shard_id)
           }
         }
         dout(20) << "RGWLC::bucket_lc_process:" << thread_id << " expired_cnt: " << expired_cnt << " process time: " << ceph_clock_now() - now << dendl;
-      } while (is_truncated);
-      dout(20) << "RGWLC::bucket_lc_process:" << thread_id << " done" << dendl;      
+      } while (is_truncated);      
     }
   } else {
   //bucket versioning is enabled or suspended
@@ -552,6 +563,8 @@ int RGWLC::bucket_lc_process(string& shard_id)
   }
 
   ret = handle_multipart_expiration(&target, prefix_map);
+
+  dout(20) << "RGWLC::bucket_lc_process:" << thread_id << " done" << dendl;
 
   return ret;
 }
