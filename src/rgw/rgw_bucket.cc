@@ -517,6 +517,7 @@ int rgw_remove_bucket_by_lc(RGWRados *store, rgw_bucket& bucket)
     }
 
     bufferlist bl;
+    ::encode("true", bl);
     attrs[RGW_ATTR_LC_RM_BUCKET] = bl;
 
     r = store->put_bucket_instance_info(bucket_info, false, real_time(), &attrs);
