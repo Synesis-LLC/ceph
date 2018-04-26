@@ -503,7 +503,8 @@ EOF
 
         rgw_remove_object_always_bypass_gc = true
         rgw_remove_object_max_concurrent_ios = 32
-        rgw_remove_bucket_always_delete_children = true
+        rgw_remove_bucket_always_delete_children = false
+        rgw_remove_bucket_by_lc = true
 
 [mds]
 $DAEMONOPTS
