@@ -99,7 +99,7 @@ struct record_format
         return u64;
       }
     }
-    if (ptr[0] == 's') {
+    if (ptr[0] == 'i') {
       if (ptr[1] == '8') {
         *pptr = ptr + 2;
         return i8;
@@ -120,15 +120,15 @@ struct record_format
     throw std::length_error(ss.str());
   }
 
-  size_t vector_length;
+  uint32_t vector_length;
 
   inline size_t get_vector_size() const
   {
     return vector_length*get_element_size();
   }
 
-  size_t size;
-  size_t vector_offset;
+  uint32_t size;
+  uint32_t vector_offset;
 
   static record_format from_string(const std::string& s)
   {
@@ -182,11 +182,12 @@ struct record_format
 
   void copy_to(bufferlist& bl) const
   {
-    bl.append(size);
-    bl.append(vector_offset);
-    bl.append(vformat);
+    CLS_LOG(20, "record_format::copy_to bl %d", bl.length());
+    bl.append((const char*)&size, 4);
+    bl.append((const char*)&vector_offset, 4);
+    bl.append((const char*)&vformat, 1);
     bl.append_zero(3);
-    bl.append(vector_length);
+    bl.append((const char*)&vector_length, 4);
   }
 
   record_format(size_t _size, size_t _offset, VECTOR_ELEMENT_FORMAT fmt, size_t len) :
@@ -201,7 +202,7 @@ struct record_format
   std::string to_string() const
   {
     char buff[64];
-    snprintf(buff, sizeof(buff), "%lu+%lu:%sx%lu", size, vector_offset, ve_format_to_str(), vector_length);
+    snprintf(buff, sizeof(buff), "%u+%u:%sx%u", size, vector_offset, ve_format_to_str(), vector_length);
     return std::string(buff);
   }
 };
@@ -235,6 +236,13 @@ protected:
   virtual ~base_record() = default;
 
 public:
+  std::string to_string() const
+  {
+    char buff[16];
+    snprintf(buff, sizeof(buff), "%ld", data.size());
+    return format.to_string() + ", " + std::string(buff);
+  }
+
   template<typename T>
   T* begin() const {
     return (T*)(data.data() + format.vector_offset);
@@ -254,7 +262,17 @@ public:
   }
 
   void copy_to(bufferlist& bl) const {
+    CLS_LOG(20, "base_record::copy_to bl %d", bl.length());
+    CLS_LOG(20, "base_record::copy_to %s", to_string().c_str());
+    int count = 0;
+    for (uint8_t b : data) {
+      CLS_LOG(30, "%04d %02x", count++, b);
+    }
     bl.append((char*)data.data(), data.size());
+  }
+
+  void copy_format_to(bufferlist& bl) const {
+    format.copy_to(bl);
   }
 
   size_t size() const
@@ -306,7 +324,7 @@ std::shared_ptr<base_record> base_record::read_from(const bufferlist& bl, size_t
 
 struct request
 {
-  size_t records_to_find;
+  uint32_t records_to_find;
   std::shared_ptr<base_record> rec;
 
   static request from_bl(const bufferlist& bl, size_t offset)
@@ -317,16 +335,22 @@ struct request
       throw std::length_error(ss.str());
     }
     request r;
-    bl.copy(offset, MIN(4, sizeof(r.records_to_find)), (char*)&r.records_to_find);
+    bl.copy(offset, sizeof(r.records_to_find), (char*)&r.records_to_find);
     offset += 4;
     record_format fmt = record_format::from_bl(bl, offset);
     offset += 16;
+    CLS_LOG(20, "request::from_bl %u %s", r.records_to_find, fmt.to_string().c_str());
     r.rec = base_record::read_from(bl, offset, fmt);
+    if (!r.rec) {
+      std::stringstream ss;
+      ss << "failed parse request: length=" << bl.length() << ", offset=" << offset;
+      throw std::length_error(ss.str());
+    }
     return std::move(r);
   }
   void copy_to(bufferlist& bl) const
   {
-    bl.append(records_to_find);
+    bl.append((const char*)&records_to_find, 4);
     rec->copy_to(bl);
   }
   size_t size() const
@@ -355,8 +379,9 @@ struct multi_request
       throw std::length_error(ss.str());
     }
     multi_request mr;
-    size_t n;
-    bl.copy(offset, MIN(4, sizeof(n)), (char*)&n);
+    uint32_t n = 0;
+    bl.copy(offset, sizeof(n), (char*)&n);
+    CLS_LOG(20, "multi_request::from_bl %u", n);
     mr.requests.resize(n);
     offset += 4;
     for (size_t i = 0; i < n; i++) {
@@ -369,49 +394,109 @@ struct multi_request
 
 struct response
 {
-  request req;
-  record_format results_format;
-  std::list<std::shared_ptr<base_record>> results;
+  std::shared_ptr<base_record> rqst;
+  std::list<std::pair<double, std::shared_ptr<base_record>>> results;
+
+  uint32_t max_to_find;
+
+  double max_distance;
+
+  response(const request& rq) :
+    rqst(rq.rec),
+    max_to_find(rq.records_to_find),
+    max_distance(0)
+  {}
 
   void copy_to(bufferlist& bl) const
   {
-    req.rec->copy_to(bl);
+    CLS_LOG(20, "response::copy_to bl %d", bl.length());
+    CLS_LOG(20, "response::copy_to %s", rqst->to_string().c_str());
+    rqst->copy_format_to(bl);
+    rqst->copy_to(bl);
     uint32_t len = results.size();
-    bl.append(len);
-    results_format.copy_to(bl);
+    CLS_LOG(20, "response::copy_to %u", len);
+    bl.append((const char*)&len, 4);
     for (const auto& res : results) {
-      res->copy_to(bl);
+      CLS_LOG(20, "response::copy_to %f", res.first);
+      bl.append((const char*)&res.first, 8);
+      CLS_LOG(20, "response::copy_to %s", res.second->to_string().c_str());
+      res.second->copy_to(bl);
+    }
+  }
+
+  void test_append(std::shared_ptr<base_record> r)
+  {
+    double d = -1;
+    try {
+      d = rqst->distance(*r);
+    } catch (const std::exception& e) {
+      CLS_LOG(0, "%s", e.what());
+      return;
+    }
+    if (results.size() < max_to_find) {
+      // window is not full
+      results.emplace_back(d, r);
+      if (max_distance < d) {
+        max_distance = d;
+      }
+    } else if (max_distance == d) {
+      // r is same, may exceed max number of results
+      results.emplace_back(d, r);
+    } else if (max_distance > d) {
+      // r is closer
+      results.emplace_back(d, r);
+      double new_max_distance = 0;
+      results.remove_if([&new_max_distance, this](const std::pair<double, std::shared_ptr<base_record>>& p) {
+        if (p.first == max_distance) {
+          return true;
+        } else if (p.first > new_max_distance) {
+          new_max_distance = p.first;
+        }
+        return false;
+      });
+      max_distance = new_max_distance;
     }
   }
 };
 
 struct multi_response
 {
-  std::list<response> responses;
+  std::vector<response> responses;
+  record_format results_format;
+
+  multi_response(const multi_request& mrq, const record_format& fmt) :
+    results_format(fmt)
+  {
+    for (const auto& rq : mrq.requests) {
+      responses.emplace_back(rq);
+    }
+  }
+
   /*
    * Response format
    *
+   * 16 bytes - results records format
    * uint32 - number of responses
    * each response:
    *   16 bytes - request record format
    *   record_format.size bytes - request record data
    *   uint32 - number of result records
-   *   16 bytes - result record format
    *   each result record:
+   *     float64 - distance
    *     record_format.size bytes - result record data
    */
   void copy_to(bufferlist& bl) const
   {
+    CLS_LOG(20, "multi_response::copy_to bl %d", bl.length());
+    results_format.copy_to(bl);
     uint32_t len = responses.size();
-    bl.append(len);
+    CLS_LOG(20, "multi_response::copy_to %u", len);
+    bl.append((const char*)&len, 4);
     for (const auto& res : responses) {
       res.copy_to(bl);
     }
   }
 };
-
-//TODO: find n closest, multiple search request
-
 
 #define READ_BYTES (1024*1024)
 
@@ -434,22 +519,24 @@ static int find_closest(cls_method_context_t hctx, bufferlist *in, bufferlist *o
     out->append(e.what());
     return -EINVAL;
   }
+  CLS_LOG(20, "find_closest %s", rfmt.to_string().c_str());
+  CLS_LOG(20, "find_closest %u", in->length());
 
-  // assume client is aware of format - check only length
-  if (in->length() != rfmt.get_vector_size()) {
-    const char* errmsg = "object has different \"length\" with request";
-    CLS_LOG(0, "%s", errmsg);
-    out->append(errmsg);
+  multi_request mrq;
+  try {
+    mrq = multi_request::from_bl(*in, 0);
+  } catch (const std::exception& e) {
+    CLS_LOG(0, "%s", e.what());
+    out->append(e.what());
     return -EINVAL;
   }
 
-  // decode request vector
-  auto req = base_record::read_from(*in, 0, record_format(rfmt.get_vector_size(), 0, rfmt.vformat, rfmt.vector_length));
-  if (!req) {
-    const char* errmsg = "request decode error";
-    CLS_LOG(0, "%s", errmsg);
-    out->append(errmsg);
-  }
+  CLS_LOG(20, "%lu %u %s",
+          mrq.requests.size(),
+          mrq.requests[0].records_to_find,
+          mrq.requests[0].rec->to_string().c_str());
+
+  multi_response mrsp(mrq, rfmt);
 
   uint64_t obj_size = 0;
   time_t mtime;
@@ -458,19 +545,19 @@ static int find_closest(cls_method_context_t hctx, bufferlist *in, bufferlist *o
     return err;
   }
   if (obj_size == 0) {
-    out->append("empty object");
-    return -EINVAL;
+    // empty object - empty result (nothing found)
+    mrsp.copy_to(*out);
+    return 0;
   }
 
   uint32_t read_length = READ_BYTES / rfmt.size;
   read_length *= rfmt.size;
   uint64_t read_count = (obj_size / read_length) + 1;
   int obj_offset = 0;
-  double min = std::numeric_limits<double>::max();
-  std::shared_ptr<base_record> result;
+  bufferlist data_bl;
   while (read_count--) {
+    data_bl.clear();
     // read READ_BYTES into memory each time
-    bufferlist data_bl;
     err = cls_cxx_read(hctx, obj_offset, read_length, &data_bl);
     if (err < 0) {
       out->append("read error");
@@ -479,41 +566,28 @@ static int find_closest(cls_method_context_t hctx, bufferlist *in, bufferlist *o
     if (data_bl.length() < rfmt.size) {
       break;
     }
+    CLS_LOG(30, "cls_cxx_read %d %d", obj_offset, data_bl.length());
     obj_offset += data_bl.length();
 
-    // foreach vector in readed data compare disatance with min distance
+    // foreach record in readed data compare disatance with min distance
     int count = data_bl.length() / rfmt.size;
     int data_bl_offset = 0;
     while (count--) {
+      CLS_LOG(30, "base_record::read_from %d %u", data_bl_offset, rfmt.size);
       auto rec = base_record::read_from(data_bl, data_bl_offset, rfmt);
       if (!rec) {
         CLS_LOG(0, "read next record failed %d %lu %d %d", obj_offset, read_count, data_bl_offset, count);
         continue;
       }
-      double d = -1;
-      try {
-        d = req->distance(*rec);
-      } catch (const std::exception& e) {
-        CLS_LOG(0, "%s", e.what());
-        continue;
+      CLS_LOG(30, "%s", rec->to_string().c_str());
+      data_bl_offset += rfmt.size;
+      for (auto& resp : mrsp.responses) {
+        resp.test_append(rec);
       }
-      if (d < min) {
-        min = d;
-        result = rec;
-      }
-      data_bl_offset += rfmt.get_vector_size();
     }
   }
 
-  if (result) {
-    out->append((char*)&min, sizeof(min));
-    result->copy_to(*out);
-  } else {
-    min = -1;
-    out->append((char*)&min, sizeof(min));
-    out->append("not found");
-  }
-
+  mrsp.copy_to(*out);
   return 0;
 }
 
