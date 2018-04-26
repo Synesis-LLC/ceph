@@ -347,8 +347,8 @@ def handler(catchall_path=None, fmt=None, target=None):
         if dryrun:
             return make_response(
                 fmt,
-                "dry-runned\n",
                 "",
+                "dry-runned",
                 200,
             )
 
