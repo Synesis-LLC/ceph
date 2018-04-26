@@ -24,18 +24,19 @@ CLS_NAME(vector)
 
 struct record_format
 {
-  enum VECTOR_ELEMENT_FORMAT
+  enum VECTOR_ELEMENT_FORMAT : uint8_t
   {
-    i8,
-    i16,
-    i32,
-    i64,
-    u8,
-    u16,
-    u32,
-    u64,
-    f32,
-    f64
+    // explicit values used for serializing
+    i8 = 1,
+    i16 = 2,
+    i32 = 3,
+    i64 = 4,
+    u8 = 5,
+    u16 = 6,
+    u32 = 7,
+    u64 = 8,
+    f32 = 9,
+    f64 = 10
   } vformat;
 
   inline size_t get_element_size() const
@@ -160,6 +161,33 @@ struct record_format
     ss << "invalid format: " << s;
     throw std::length_error(ss.str());
   }
+  /*
+   * uint32 - record size
+   * uint32 - vector offset
+   * uint8  - element type
+   * 3 x uint8 - reserved
+   * uint32 - vector length
+   */
+  static record_format from_bl(const bufferlist& bl, size_t offset)
+  {
+    if (bl.length() < offset + 16) {
+      std::stringstream ss;
+      ss << "failed parse record_format: length=" << bl.length() << ", offset=" << offset;
+      throw std::length_error(ss.str());
+    }
+    uint32_t buff[4];
+    bl.copy(offset, sizeof(buff), (char*)&buff);
+    return record_format(buff[0], buff[1], (VECTOR_ELEMENT_FORMAT)(buff[2] & 0x00ff), buff[3]);
+  }
+
+  void copy_to(bufferlist& bl) const
+  {
+    bl.append(size);
+    bl.append(vector_offset);
+    bl.append(vformat);
+    bl.append_zero(3);
+    bl.append(vector_length);
+  }
 
   record_format(size_t _size, size_t _offset, VECTOR_ELEMENT_FORMAT fmt, size_t len) :
     vformat(fmt),
@@ -228,6 +256,11 @@ public:
   void copy_to(bufferlist& bl) const {
     bl.append((char*)data.data(), data.size());
   }
+
+  size_t size() const
+  {
+    return format.size;
+  }
 };
 
 template <typename T>
@@ -268,17 +301,117 @@ std::shared_ptr<base_record> base_record::read_from(const bufferlist& bl, size_t
   case record_format::f64:   r = std::make_shared<record<double>>(format); break;
   }
   bl.copy(offset, r->data.size(), (char*)r->data.data());
-  return r;
+  return std::move(r);
 }
 
+struct request
+{
+  size_t records_to_find;
+  std::shared_ptr<base_record> rec;
 
+  static request from_bl(const bufferlist& bl, size_t offset)
+  {
+    if (bl.length() <= offset + 4 + 16) {
+      std::stringstream ss;
+      ss << "failed parse request: length=" << bl.length() << ", offset=" << offset;
+      throw std::length_error(ss.str());
+    }
+    request r;
+    bl.copy(offset, MIN(4, sizeof(r.records_to_find)), (char*)&r.records_to_find);
+    offset += 4;
+    record_format fmt = record_format::from_bl(bl, offset);
+    offset += 16;
+    r.rec = base_record::read_from(bl, offset, fmt);
+    return std::move(r);
+  }
+  void copy_to(bufferlist& bl) const
+  {
+    bl.append(records_to_find);
+    rec->copy_to(bl);
+  }
+  size_t size() const
+  {
+    return 4 + 16 + rec->size();
+  }
+};
 
+struct multi_request
+{
+  std::vector<request> requests;
+  /*
+   * Request format
+   *
+   * uint32 - number of parallel requests
+   * each request:
+   *   uint32 - number of records to find
+   *   16 bytes - record_format
+   *   record_format.size bytes - record data
+   */
+  static multi_request from_bl(const bufferlist& bl, size_t offset)
+  {
+    if (bl.length() <= offset + 4 + 4 + 16) {
+      std::stringstream ss;
+      ss << "failed parse request: length=" << bl.length() << ", offset=" << offset;
+      throw std::length_error(ss.str());
+    }
+    multi_request mr;
+    size_t n;
+    bl.copy(offset, MIN(4, sizeof(n)), (char*)&n);
+    mr.requests.resize(n);
+    offset += 4;
+    for (size_t i = 0; i < n; i++) {
+      mr.requests[i] = request::from_bl(bl, offset);
+      offset += mr.requests[i].size();
+    }
+    return std::move(mr);
+  }
+};
 
+struct response
+{
+  request req;
+  record_format results_format;
+  std::list<std::shared_ptr<base_record>> results;
 
-//TODO: binary reques/response format
+  void copy_to(bufferlist& bl) const
+  {
+    req.rec->copy_to(bl);
+    uint32_t len = results.size();
+    bl.append(len);
+    results_format.copy_to(bl);
+    for (const auto& res : results) {
+      res->copy_to(bl);
+    }
+  }
+};
+
+struct multi_response
+{
+  std::list<response> responses;
+  /*
+   * Response format
+   *
+   * uint32 - number of responses
+   * each response:
+   *   16 bytes - request record format
+   *   record_format.size bytes - request record data
+   *   uint32 - number of result records
+   *   16 bytes - result record format
+   *   each result record:
+   *     record_format.size bytes - result record data
+   */
+  void copy_to(bufferlist& bl) const
+  {
+    uint32_t len = responses.size();
+    bl.append(len);
+    for (const auto& res : responses) {
+      res.copy_to(bl);
+    }
+  }
+};
+
 //TODO: find n closest, multiple search request
 
-//TODO: custom osd classes in separate deb package
 
 #define READ_BYTES (1024*1024)
 
