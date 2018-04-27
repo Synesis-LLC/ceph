@@ -1,3 +1,9 @@
+ceph (12.2.2-5.2) stable; urgency=medium
+
+  * rgw added removing buckets by lifecycles
+
+ -- Yury Zhyhalka <yury.zhyhalka@synesis.ru>  Fri, 27 Apr 2018 12:56:40 +0300
+
 ceph (12.2.2-5.1) stable; urgency=medium
 
   * mgr expects plain osd metadata
