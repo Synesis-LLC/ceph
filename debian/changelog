@@ -1,3 +1,9 @@
+ceph (12.2.2-5.3) stable; urgency=medium
+
+  * no changes, just new version
+
+ -- Yury Zhyhalka <yury.zhyhalka@synesis.ru>  Sat, 28 Apr 2018 13:08:34 +0300
+
 ceph (12.2.2-5.2) stable; urgency=medium
 
   * rgw added removing buckets by lifecycles
