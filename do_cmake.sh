@@ -16,7 +16,7 @@ if which ccache ; then
 fi
 ARGS="${ARGS} -DCMAKE_BUILD_TYPE=${MODE}"
 #ARGS="${ARGS} -DALLOCATOR=jemalloc"
-ARGS="${ARGS} -DWITH_TESTS=OFF"
+ARGS="${ARGS} -DWITH_TESTS=OFF -DWITH_PYTHON3=ON"
 
 mkdir build
 cd build

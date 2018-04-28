@@ -883,6 +883,7 @@ int librados::IoCtxImpl::aio_read(const object_t oid, AioCompletionImpl *c,
   c->bl.push_back(buffer::create_static(len, buf));
   c->blp = &c->bl;
   c->out_buf = buf;
+  c->out_buf_length = len;
 
   ZTracer::Trace trace;
   if (info)
@@ -1423,6 +1424,7 @@ int librados::IoCtxImpl::aio_exec(const object_t& oid, AioCompletionImpl *c,
   c->bl.push_back(buffer::create_static(out_len, buf));
   c->blp = &c->bl;
   c->out_buf = buf;
+  c->out_buf_length = out_len;
 
   ::ObjectOperation rd;
   prepare_assert_ops(&rd);
@@ -2020,9 +2022,19 @@ void librados::IoCtxImpl::C_aio_Complete::finish(int r)
   c->cond.Signal();
 
   if (r == 0 && c->blp && c->blp->length() > 0) {
-    if (c->out_buf && !c->blp->is_provided_buffer(c->out_buf))
-      c->blp->copy(0, c->blp->length(), c->out_buf);
-    c->rval = c->blp->length();
+    if (c->out_buf) {
+      if (!c->blp->contains_buffer(c->out_buf)) {
+        size_t to_copy_bytes = c->out_buf_length < c->blp->length() ? c->out_buf_length : c->blp->length();
+        c->blp->copy(0, to_copy_bytes, c->out_buf);
+        c->rval = to_copy_bytes;
+      } else if (c->out_buf_length > 0 && c->out_buf_length < c->blp->length()) {
+        c->rval = c->out_buf_length;
+      } else {
+        c->rval = c->blp->length();
+      }
+    } else {
+      c->rval = c->blp->length();
+    }
   }
 
   if (c->callback_complete ||
