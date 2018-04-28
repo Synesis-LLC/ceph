@@ -878,7 +878,6 @@ int librados::IoCtxImpl::aio_read(const object_t oid, AioCompletionImpl *c,
   c->bl.clear();
   c->bl.push_back(buffer::create_static(len, buf));
   c->blp = &c->bl;
-  c->out_buf = buf;
 
   ZTracer::Trace trace;
   if (info)
@@ -1418,7 +1417,6 @@ int librados::IoCtxImpl::aio_exec(const object_t& oid, AioCompletionImpl *c,
   c->bl.clear();
   c->bl.push_back(buffer::create_static(out_len, buf));
   c->blp = &c->bl;
-  c->out_buf = buf;
 
   ::ObjectOperation rd;
   prepare_assert_ops(&rd);
@@ -2017,7 +2015,9 @@ void librados::IoCtxImpl::C_aio_Complete::finish(int r)
   c->cond.Signal();
 
   if (r == 0 && c->blp && c->blp->length() > 0) {
-    if (c->out_buf && !c->blp->is_contiguous()) {
+    if (c->blp == &c->bl && !c->blp->is_contiguous()) {
+      // self-hosted bufferlist - contains provided output buffer
+      // not contiguous - returned data did not fit into provided buffer
       c->rval = -ERANGE;
     } else {
       c->rval = c->blp->length();

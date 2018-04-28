@@ -1597,6 +1597,18 @@ static std::atomic_flag buffer_debug_lock = ATOMIC_FLAG_INIT;
     return (is_contiguous() && (_buffers.front().c_str() == dst));
   }
 
+  bool buffer::list::contains_buffer(const char *dst) const
+  {
+    if (_buffers.empty())
+      return false;
+    for (const auto& b : _buffers) {
+      if (b.c_str() == dst) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   bool buffer::list::is_aligned(unsigned align) const
   {
     for (std::list<ptr>::const_iterator it = _buffers.begin();

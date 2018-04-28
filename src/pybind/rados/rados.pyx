@@ -1167,7 +1167,7 @@ Rados object in state %s." % self.state)
                 ret = rados_cluster_fsid(self.cluster, ret_buf, buf_len)
             if ret < 0:
                 raise make_ex(ret, "error getting cluster fsid")
-            if ret != <int>buf_len:
+            if ret < <int>buf_len:
                 _PyBytes_Resize(&ret_s, ret)
             return <object>ret_s
         finally:
@@ -2322,7 +2322,7 @@ cdef class Ioctx(object):
         def oncomplete_(completion_v):
             cdef Completion _completion_v = completion_v
             return_value = _completion_v.get_return_value()
-            if return_value > 0 and return_value != length:
+            if return_value > 0 and return_value < length:
                 _PyBytes_Resize(&_completion_v.buf, return_value)
             return oncomplete(_completion_v, <object>_completion_v.buf if return_value >= 0 else None)
 
@@ -2388,7 +2388,7 @@ cdef class Ioctx(object):
         def oncomplete_(completion_v):
             cdef Completion _completion_v = completion_v
             return_value = _completion_v.get_return_value()
-            if return_value > 0 and return_value != length:
+            if return_value > 0 and return_value < length:
                 _PyBytes_Resize(&_completion_v.buf, return_value)
             return oncomplete(_completion_v, <object>_completion_v.buf if return_value >= 0 else None)
 
@@ -2703,7 +2703,7 @@ returned %d, but should return zero on success." % (self.name, ret))
             if ret < 0:
                 raise make_ex(ret, "Ioctx.read(%s): failed to read %s" % (self.name, key))
 
-            if ret != length:
+            if ret < length:
                 _PyBytes_Resize(&ret_s, ret)
 
             return <object>ret_s
@@ -2759,7 +2759,7 @@ returned %d, but should return zero on success." % (self.name, ret))
             if ret < 0:
                 raise make_ex(ret, "Ioctx.read(%s): failed to read %s" % (self.name, key))
 
-            if ret != length:
+            if ret < length:
                 _PyBytes_Resize(&ret_s, ret)
 
             return ret, <object>ret_s
