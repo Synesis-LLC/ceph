@@ -135,6 +135,8 @@ static int record_hello(cls_method_context_t hctx, bufferlist *in, bufferlist *o
   return 0;
 }
 
+
+
 static int writes_dont_return_data(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
 {
   // make some change to the object

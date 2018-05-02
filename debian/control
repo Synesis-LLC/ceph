@@ -729,30 +729,6 @@ Description: debugging symbols for radosgw
  .
  This package contains debugging symbols for radosgw.
 
-Package: ceph-test
-Architecture: linux-any
-Depends: ceph-common,
-         curl,
-         jq,
-	 socat,
-         xmlstarlet,
-         ${misc:Depends},
-         ${shlibs:Depends},
-Description: Ceph test and benchmarking tools
- This package contains tools for testing and benchmarking Ceph.
-
-Package: ceph-test-dbg
-Architecture: linux-any
-Section: debug
-Priority: extra
-Depends: ceph-common (= ${binary:Version}),
-         ceph-test (= ${binary:Version}),
-         curl,
-         ${misc:Depends},
-Description: Ceph test and benchmarking tools
- .
- This package contains the debugging symbols for ceph-test.
-
 Package: python-ceph
 Architecture: linux-any
 Section: python
@@ -907,23 +883,6 @@ Description: Python 3 utility libraries for Ceph CLI
  .
  This package contains types and routines for Python 3 used by the
  Ceph CLI as well as the RESTful interface.
-
-Package: libcephfs-java
-Section: java
-Architecture: all
-Depends: libcephfs-jni (= ${binary:Version}),
-         ${java:Depends},
-         ${misc:Depends},
-Description: Java libraries for the Ceph File System
-
-Package: libcephfs-jni
-Architecture: linux-any
-Section: java
-Depends: libcephfs2 (= ${binary:Version}),
-         ${java:Depends},
-         ${misc:Depends},
-         ${shlibs:Depends},
-Description: Java Native Interface library for CephFS Java bindings
 
 Package: rados-objclass-dev
 Architecture: linux-any

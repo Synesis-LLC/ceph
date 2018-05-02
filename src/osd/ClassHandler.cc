@@ -1,4 +1,4 @@
-// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*- 
+// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 // vim: ts=8 sw=2 smarttab
 
 #include "include/types.h"
@@ -34,7 +34,7 @@ void ClassHandler::add_embedded_class(const string& cname)
   cls->status = ClassData::CLASS_INITIALIZING;
 }
 
-int ClassHandler::open_class(const string& cname, ClassData **pcls)
+int ClassHandler::_open_class(const string& cname, ClassData **pcls)
 {
   Mutex::Locker lock(mutex);
   ClassData *cls = _get_class(cname, true);
@@ -46,6 +46,107 @@ int ClassHandler::open_class(const string& cname, ClassData **pcls)
       return r;
   }
   *pcls = cls;
+  return 0;
+}
+
+//TODO: class state struct with formatter
+int ClassHandler::list_classes(std::list<std::pair<std::string, std::string>>& class_list)
+{
+  Mutex::Locker lock(mutex);
+  for (const auto& cls : classes) {
+    std::stringstream ss;
+    auto cgd = _get_class_guard(cls.first);
+    if (cgd) {
+      ss << (cgd->is_blocked() ? "blocked" : "active");
+    } else {
+      ss << "unknown";
+    }
+    ss << "," << ClassData::status_to_string(cls.second.status);
+    if (cls.second.whitelisted) {
+      ss << ",whitelisted";
+    }
+    ss << ",refcount=" << cgd->refcount;
+    class_list.emplace_back(cls.first, ss.str());
+  }
+  return 0;
+}
+
+int ClassHandler::open_class(const string& cname, ClassDataPtr* pcls)
+{
+  // get class guard if it already present
+  ClassDataGuard* cdg = _get_class_guard(cname);
+  if (cdg != nullptr) {
+    if (!cdg->open_class_maybe_wait(cct->_conf->osd_open_class_timeout)) {
+      ldout(cct, 0) << "open class wait timeout" << dendl;
+      return -ENOENT;
+    }
+  }
+
+  ClassData* _pcls = nullptr;
+  int err = _open_class(cname, &_pcls);
+  if (err) {
+    ldout(cct, 0) << "open class failed" << dendl;
+    return err;
+  }
+
+  // get class guard for newly loaded class
+  if (!cdg) {
+    cdg = _get_class_guard(cname);
+    if (cdg != nullptr) {
+      if (!cdg->open_class_maybe_wait(cct->_conf->osd_open_class_timeout)) {
+        ldout(cct, 0) << "open class wait timeout" << dendl;
+        return -ENOENT;
+      }
+    } else {
+      ldout(cct, 0) << "failed get class guard" << dendl;
+      return -ENOENT;
+    }
+  }
+
+  *pcls = ClassDataPtr(cdg, _pcls);
+  return 0;
+}
+
+int ClassHandler::close_class(const string& cname, bool disable, bool block_opens)
+{
+  ClassDataGuard* cdg = _get_class_guard(cname);
+  if (cdg == nullptr) {
+    ldout(cct, 0) << "failed get class guard" << dendl;
+    return -ENOENT;
+  }
+
+  cdg->open_class_waits = block_opens;
+
+  cdg->block();
+  if (!cdg->close_class_wait(cct->_conf->osd_close_class_timeout)) {
+    // timeout
+    cdg->unblock();
+    ldout(cct, 0) << "close class timeout" << dendl;
+    return -EPERM;
+  }
+
+  ClassData* cls = nullptr;
+  {
+    Mutex::Locker lock(mutex);
+    auto cls_it = classes.find(cname);
+    if (cls_it == classes.end()) {
+      cdg->unblock();
+      ldout(cct, 0) << "class not exist" << dendl;
+      return -ENOENT;
+    }
+    cls = &cls_it->second;
+  }
+
+  int err = _unload_class(cls);
+  if (err) {
+    cdg->unblock();
+    ldout(cct, 0) << "unload class failed" << dendl;
+    return err;
+  }
+
+  if (!disable) {
+    cdg->unblock();
+  }
   return 0;
 }
 
@@ -62,17 +163,17 @@ int ClassHandler::open_all_classes()
     if (pde->d_name[0] == '.')
       continue;
     if (strlen(pde->d_name) > sizeof(CLS_PREFIX) - 1 + sizeof(CLS_SUFFIX) - 1 &&
-	strncmp(pde->d_name, CLS_PREFIX, sizeof(CLS_PREFIX) - 1) == 0 &&
-	strcmp(pde->d_name + strlen(pde->d_name) - (sizeof(CLS_SUFFIX) - 1), CLS_SUFFIX) == 0) {
+        strncmp(pde->d_name, CLS_PREFIX, sizeof(CLS_PREFIX) - 1) == 0 &&
+        strcmp(pde->d_name + strlen(pde->d_name) - (sizeof(CLS_SUFFIX) - 1), CLS_SUFFIX) == 0) {
       char cname[PATH_MAX + 1];
       strncpy(cname, pde->d_name + sizeof(CLS_PREFIX) - 1, sizeof(cname) -1);
       cname[strlen(cname) - (sizeof(CLS_SUFFIX) - 1)] = '\0';
       ldout(cct, 10) << __func__ << " found " << cname << dendl;
-      ClassData *cls;
+      ClassDataPtr cls;
       // skip classes that aren't in 'osd class load list'
       r = open_class(cname, &cls);
       if (r < 0 && r != -EPERM)
-	goto out;
+        goto out;
     }
   }
  out:
@@ -82,12 +183,17 @@ int ClassHandler::open_all_classes()
 
 void ClassHandler::shutdown()
 {
-  for (auto& cls : classes) {
-    if (cls.second.handle) {
-      dlclose(cls.second.handle);
-    }
+  for (auto& cdg : class_guards) {
+    unload_and_block_class(cdg.first);
   }
-  classes.clear();
+  {
+    std::lock_guard<std::mutex>lock(class_guards_mutex);
+    class_guards.clear();
+  }
+  {
+    Mutex::Locker lock(mutex);
+    classes.clear();
+  }
 }
 
 /*
@@ -129,9 +235,30 @@ ClassHandler::ClassData *ClassHandler::_get_class(const string& cname,
     ldout(cct, 10) << "_get_class adding new class name " << cname << " " << cls << dendl;
     cls->name = cname;
     cls->handler = this;
-    cls->whitelisted = in_class_list(cname, cct->_conf->osd_class_default_list);
+
+    class_guards[cname];
   }
+  cls->whitelisted = in_class_list(cname, cct->_conf->osd_class_default_list);
   return cls;
+}
+
+int ClassHandler::_unload_class(ClassData *cls)
+{
+  if (cls->status != ClassData::CLASS_OPEN) {
+    ldout(cct, 0) << "class is not opened" << dendl;
+    return -EPERM;
+  }
+
+  cls->methods_map.clear();
+  cls->filters_map.clear();
+  cls->dependencies.clear();
+  cls->missing_dependencies.clear();
+  dlclose(cls->handle);
+  cls->handle = nullptr;
+
+  cls->status = ClassData::CLASS_UNKNOWN;
+
+  return 0;
 }
 
 int ClassHandler::_load_class(ClassData *cls)
@@ -144,8 +271,8 @@ int ClassHandler::_load_class(ClassData *cls)
       cls->status == ClassData::CLASS_MISSING) {
     char fname[PATH_MAX];
     snprintf(fname, sizeof(fname), "%s/" CLS_PREFIX "%s" CLS_SUFFIX,
-	     cct->_conf->osd_class_dir.c_str(),
-	     cls->name.c_str());
+             cct->_conf->osd_class_dir.c_str(),
+             cls->name.c_str());
     ldout(cct, 10) << "_load_class " << cls->name << " from " << fname << dendl;
 
     cls->handle = dlopen(fname, RTLD_NOW);
@@ -154,12 +281,12 @@ int ClassHandler::_load_class(ClassData *cls)
       int r = ::stat(fname, &st);
       if (r < 0) {
         r = -errno;
-	ldout(cct, 0) << __func__ << " could not stat class " << fname
-		      << ": " << cpp_strerror(r) << dendl;
+        ldout(cct, 0) << __func__ << " could not stat class " << fname
+                      << ": " << cpp_strerror(r) << dendl;
       } else {
-	ldout(cct, 0) << "_load_class could not open class " << fname
-		      << " (dlopen failed): " << dlerror() << dendl;
-	r = -EIO;
+        ldout(cct, 0) << "_load_class could not open class " << fname
+                      << " (dlopen failed): " << dlerror() << dendl;
+        r = -EIO;
       }
       cls->status = ClassData::CLASS_MISSING;
       return r;
@@ -170,13 +297,13 @@ int ClassHandler::_load_class(ClassData *cls)
     if (cls_deps) {
       cls_deps_t *deps = cls_deps();
       while (deps) {
-	if (!deps->name)
-	  break;
-	ClassData *cls_dep = _get_class(deps->name, false);
-	cls->dependencies.insert(cls_dep);
-	if (cls_dep->status != ClassData::CLASS_OPEN)
-	  cls->missing_dependencies.insert(cls_dep);
-	deps++;
+        if (!deps->name)
+          break;
+        ClassData *cls_dep = _get_class(deps->name, false);
+        cls->dependencies.insert(cls_dep);
+        if (cls_dep->status != ClassData::CLASS_OPEN)
+          cls->missing_dependencies.insert(cls_dep);
+        deps++;
       }
     }
   }
@@ -211,6 +338,8 @@ int ClassHandler::_load_class(ClassData *cls)
 
 ClassHandler::ClassData *ClassHandler::register_class(const char *cname)
 {
+  // register_class is calling from class' init method
+  // class init method is called from _load_class
   assert(mutex.is_locked());
 
   ClassData *cls = _get_class(cname, false);
@@ -229,14 +358,14 @@ void ClassHandler::unregister_class(ClassHandler::ClassData *cls)
 }
 
 ClassHandler::ClassMethod *ClassHandler::ClassData::register_method(const char *mname,
-                                                                    int flags,
+								    int flags,
 								    cls_method_call_t func)
 {
   /* no need for locking, called under the class_init mutex */
   if (!flags) {
     lderr(handler->cct) << "register_method " << name << "." << mname
-			<< " flags " << flags << " " << (void*)func
-			<< " FAILED -- flags must be non-zero" << dendl;
+                        << " flags " << flags << " " << (void*)func
+                        << " FAILED -- flags must be non-zero" << dendl;
     return NULL;
   }
   ldout(handler->cct, 10) << "register_method " << name << "." << mname << " flags " << flags << " " << (void*)func << dendl;
@@ -249,7 +378,7 @@ ClassHandler::ClassMethod *ClassHandler::ClassData::register_method(const char *
 }
 
 ClassHandler::ClassMethod *ClassHandler::ClassData::register_cxx_method(const char *mname,
-                                                                        int flags,
+									int flags,
 									cls_method_cxx_call_t func)
 {
   /* no need for locking, called under the class_init mutex */

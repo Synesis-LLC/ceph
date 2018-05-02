@@ -1,5 +1,4 @@
 etc/init.d/ceph
-usr/bin/ceph-debugpack
 usr/bin/ceph-detect-init
 usr/bin/ceph-run
 usr/bin/crushtool
@@ -12,7 +11,6 @@ usr/lib/rados-classes/*
 usr/sbin/ceph-create-keys
 usr/share/doc/ceph/sample.ceph.conf
 usr/share/man/man8/ceph-create-keys.8
-usr/share/man/man8/ceph-debugpack.8
 usr/share/man/man8/ceph-deploy.8
 usr/share/man/man8/ceph-detect-init.8
 usr/share/man/man8/ceph-run.8
