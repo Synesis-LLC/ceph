@@ -42,8 +42,6 @@ struct librados::AioCompletionImpl {
   bool is_read;
   bufferlist bl;
   bufferlist *blp;
-  char *out_buf;
-  size_t out_buf_length;
 
   IoCtxImpl *io;
   ceph_tid_t aio_write_seq;
@@ -58,7 +56,7 @@ struct librados::AioCompletionImpl {
 			callback_safe(0),
 			callback_complete_arg(0),
 			callback_safe_arg(0),
-			is_read(false), blp(nullptr), out_buf(nullptr), out_buf_length(0),
+			is_read(false), blp(nullptr),
 			io(NULL), aio_write_seq(0), aio_write_list_item(this) { }
 
   int set_complete_callback(void *cb_arg, rados_callback_t cb) {
