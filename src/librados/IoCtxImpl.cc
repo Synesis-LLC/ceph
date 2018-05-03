@@ -2023,12 +2023,12 @@ void librados::IoCtxImpl::C_aio_Complete::finish(int r)
 
   if (r == 0 && c->blp && c->blp->length() > 0) {
     if (c->out_buf) {
-      if (!c->blp->contains_buffer(c->out_buf)) {
+      if (c->out_buf_length < c->blp->length()) {
+        c->rval = -ERANGE;
+      } else if (!c->blp->contains_buffer(c->out_buf)) {
         size_t to_copy_bytes = c->out_buf_length < c->blp->length() ? c->out_buf_length : c->blp->length();
         c->blp->copy(0, to_copy_bytes, c->out_buf);
         c->rval = to_copy_bytes;
-      } else if (c->out_buf_length < c->blp->length()) {
-        c->rval = -ERANGE;
       } else {
         c->rval = c->blp->length();
       }
