@@ -162,7 +162,7 @@ int MemStore::_load()
     bufferlist::iterator p = cbl.begin();
     c->decode(p);
     coll_map[*q] = c;
-    used_bytes += c->used_bytes();
+    _update_used_bytes(c->used_bytes(), 0);
   }
 
   dump_all();
@@ -1106,7 +1106,7 @@ int MemStore::_write(const coll_t& cid, const ghobject_t& oid,
   if (len > 0) {
     const ssize_t old_size = o->get_size();
     o->write(offset, bl);
-    used_bytes += (o->get_size() - old_size);
+    _update_used_bytes(o->get_size(), old_size);
   }
 
   return 0;
@@ -1134,8 +1134,20 @@ int MemStore::_truncate(const coll_t& cid, const ghobject_t& oid, uint64_t size)
     return -ENOENT;
   const ssize_t old_size = o->get_size();
   int r = o->truncate(size);
-  used_bytes += (o->get_size() - old_size);
+  _update_used_bytes(o->get_size(), old_size);
   return r;
+}
+
+void MemStore::_update_used_bytes(uint64_t added, uint64_t removed)
+{
+  used_bytes += added;
+  if (removed > 0) {
+    if (used_bytes > removed) {
+      used_bytes -= removed;
+    } else {
+      used_bytes = 0;
+    }
+  }
 }
 
 int MemStore::_remove(const coll_t& cid, const ghobject_t& oid)
@@ -1149,7 +1161,7 @@ int MemStore::_remove(const coll_t& cid, const ghobject_t& oid)
   auto i = c->object_hash.find(oid);
   if (i == c->object_hash.end())
     return -ENOENT;
-  used_bytes -= i->second->get_size();
+  _update_used_bytes(0, i->second->get_size());
   c->object_hash.erase(i);
   c->object_map.erase(oid);
 
@@ -1219,7 +1231,7 @@ int MemStore::_clone(const coll_t& cid, const ghobject_t& oldoid,
   if (!oo)
     return -ENOENT;
   ObjectRef no = c->get_or_create_object(newoid);
-  used_bytes += oo->get_size() - no->get_size();
+  _update_used_bytes(oo->get_size(), no->get_size());
   no->clone(oo.get(), 0, oo->get_size(), 0);
 
   // take xattr and omap locks with std::lock()
@@ -1259,7 +1271,7 @@ int MemStore::_clone_range(const coll_t& cid, const ghobject_t& oldoid,
 
   const ssize_t old_size = no->get_size();
   no->clone(oo.get(), srcoff, len, dstoff);
-  used_bytes += (no->get_size() - old_size);
+  _update_used_bytes(no->get_size(), old_size);
 
   return len;
 }
@@ -1386,7 +1398,7 @@ int MemStore::_destroy_collection(const coll_t& cid)
       return -ENOTEMPTY;
     cp->second->exists = false;
   }
-  used_bytes -= cp->second->used_bytes();
+  _update_used_bytes(0, cp->second->used_bytes());
   coll_map.erase(cp);
   return 0;
 }
