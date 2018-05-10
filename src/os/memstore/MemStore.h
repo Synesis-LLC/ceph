@@ -231,6 +231,8 @@ private:
 			      coll_t cid, const ghobject_t& o);
   int _split_collection(const coll_t& cid, uint32_t bits, uint32_t rem, coll_t dest);
 
+  void _update_used_bytes(uint64_t added, uint64_t removed);
+
   int _save();
   int _load();
 
