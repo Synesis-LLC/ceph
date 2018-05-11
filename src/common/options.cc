@@ -6580,6 +6580,10 @@ std::vector<Option> get_mds_client_options() {
     .set_default(-1)
     .set_description("gid to mount as"),
 
+    Option("rgw_distribute_cache_timeout", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    .set_default(10)
+    .set_description(""),
+
     /* RADOS client option */
     Option("client_notify_timeout", Option::TYPE_INT, Option::LEVEL_DEV)
     .set_default(10)

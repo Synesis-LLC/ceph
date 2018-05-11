@@ -365,6 +365,7 @@ OPTION(client_snapdir, OPT_STR)
 OPTION(client_mountpoint, OPT_STR)
 OPTION(client_mount_uid, OPT_INT)
 OPTION(client_mount_gid, OPT_INT)
+OPTION(rgw_distribute_cache_timeout, OPT_INT) // in seconds
 OPTION(client_notify_timeout, OPT_INT) // in seconds
 OPTION(osd_client_watch_timeout, OPT_INT) // in seconds
 OPTION(client_caps_release_delay, OPT_INT) // in seconds
