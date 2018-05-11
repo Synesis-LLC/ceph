@@ -5980,6 +5980,10 @@ std::vector<Option> get_mds_client_options() {
     .set_default(-1)
     .set_description(""),
 
+    Option("rgw_distribute_cache_timeout", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    .set_default(10)
+    .set_description(""),
+
     Option("client_notify_timeout", Option::TYPE_INT, Option::LEVEL_ADVANCED)
     .set_default(10)
     .set_description(""),
