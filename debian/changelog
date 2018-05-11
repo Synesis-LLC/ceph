@@ -1,3 +1,11 @@
+ceph (12.2.2-6) stable; urgency=medium
+
+  * support osd_request_timeout in rbd map command
+  * rgw_distribute_cache_timeout
+  * os/memstore: prevent overflow of used_bytes
+
+ -- Aleksei Gutikov <aleksey.gutikov@synesis.ru>  Fri, 11 May 2018 15:17:34 +0300
+
 ceph (12.2.2-5.4) stable; urgency=medium
 
   * reloading osd class libs on-fly
