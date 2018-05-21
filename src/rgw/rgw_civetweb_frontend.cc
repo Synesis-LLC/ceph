@@ -11,6 +11,109 @@
 
 #define dout_subsys ceph_subsys_rgw
 
+void* RGWCivetWebFrontend::civetweb_metrics_thread(void *arg)
+{
+    RGWCivetWebFrontend *fe = static_cast<RGWCivetWebFrontend *>(arg);
+
+    while (1) {
+        fe->process_metrics();
+        sleep(1);
+    }
+}
+
+void RGWCivetWebFrontend::run_metrics_thread()
+{
+    int ret = pthread_create(&metrics_thread_id, NULL, civetweb_metrics_thread, this);
+    if (ret != 0) {
+        metrics_thread_id = 0;
+    }
+
+    dout(20) << "RGWCivetWebFrontend::run_metrics_thread: " << ((ret == 0) ? "success" : "error") << dendl;
+}
+
+int parse_int_from_json(char *buf, char *collection, const char *variable)
+{
+    int ret = -1;
+
+    char *ptr = strstr(buf, collection);
+    if (ptr != NULL) {
+        ptr += strlen(collection);
+
+        ptr = strstr(ptr, variable);
+        if (ptr != NULL) {
+            ptr += strlen(variable);
+
+            for ( ; *ptr != '\0' ; ++ptr) {
+                if (*ptr >= '0' && *ptr <= '9') {
+                    ret = atoi(ptr);
+                    break;
+                }
+            }
+        }
+    }
+
+    return ret;
+}
+
+void RGWCivetWebFrontend::process_metrics()
+{
+    char buf[1024] = "";
+
+    int ret = mg_get_context_info(ctx, buf, sizeof(buf)-1);
+    if (ret <= 0 || ret >= sizeof(buf)) {
+        dout(10) << "RGWCivetWebFrontend::process_metrics: mg_get_context_info failed" << dendl;
+        return;
+    }    
+    buf[ret] = '\0';
+    // dout(20) << "RGWCivetWebFrontend::process_metrics: mg_get_context_info buf: " << buf << dendl;
+
+    auto parse_int_from_json = [&buf](const char *collection, const char *variable) mutable -> int
+    {
+        int ret = -1;
+
+        char *ptr = strstr(buf, collection);
+        if (ptr != NULL) {
+            ptr += strlen(collection);
+
+            ptr = strstr(ptr, variable);
+            if (ptr != NULL) {
+                ptr += strlen(variable);
+
+                for ( ; *ptr != '\0' ; ++ptr) {
+                    if (*ptr >= '0' && *ptr <= '9') {
+                        ret = atoi(ptr);
+                        break;
+                    }
+                }
+            }
+        }
+
+        return ret;
+    };
+
+    int con_active = parse_int_from_json((const char *)"connections", (const char *)"active");
+    int con_maxactive = parse_int_from_json((const char *)"connections", (const char *)"maxActive");
+    int con_total = parse_int_from_json((const char *)"connections", (const char *)"total");
+
+    // dout(20) << "RGWCivetWebFrontend::process_metrics: conn active: " << con_active << " con_maxactive: " << con_maxactive << " con total: " << con_total << dendl;
+
+    perfcounter->set(l_rgw_con_active, con_active);
+    perfcounter->set(l_rgw_con_maxactive, con_maxactive);
+    perfcounter->set(l_rgw_con_total, con_total);
+}
+
+void RGWCivetWebFrontend::stop_metrics_thread()
+{
+    int ret = 0;
+
+    if (metrics_thread_id > 0) {
+        ret = pthread_cancel(metrics_thread_id);
+        metrics_thread_id = 0;
+    }
+
+    dout(20) << "RGWCivetWebFrontend::stop_metrics_thread: " << ((ret == 0) ? "success" : "error") << dendl;
+}
+
 static int civetweb_callback(struct mg_connection* conn)
 {
   const struct mg_request_info* const req_info = mg_get_request_info(conn);
@@ -110,6 +213,9 @@ int RGWCivetWebFrontend::run()
   cb.log_access = rgw_civetweb_log_access_callback;
   cb.log_err_access = rgw_civetweb_log_err_access_callback;
   ctx = mg_start(&cb, this, options.data());
+
+  /* Run metrics thread */
+  run_metrics_thread();
 
   return ! ctx ? -EIO : 0;
 } /* RGWCivetWebFrontend::run */

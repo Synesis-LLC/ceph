@@ -1890,6 +1890,8 @@ void RGWListBuckets::execute()
 
   const uint64_t max_buckets = s->cct->_conf->rgw_list_buckets_max_chunk;
 
+  perfcounter->inc(l_rgw_list_buckets);
+
   op_ret = get_params();
   if (op_ret < 0) {
     goto send_end;
@@ -2327,6 +2329,8 @@ void RGWListBucket::pre_exec()
 
 void RGWListBucket::execute()
 {
+  perfcounter->inc(l_rgw_list_bucket);
+
   if (!s->bucket_exists) {
     op_ret = -ERR_NO_SUCH_BUCKET;
     return;
@@ -2376,6 +2380,11 @@ int RGWGetBucketLogging::verify_permission()
 int RGWGetBucketLocation::verify_permission()
 {
   return verify_bucket_owner_or_policy(s, rgw::IAM::s3GetBucketLocation);
+}
+
+void RGWGetBucketLocation::execute()
+{
+  perfcounter->inc(l_rgw_get_bucket_location);
 }
 
 int RGWCreateBucket::verify_permission()
@@ -2628,6 +2637,8 @@ void RGWCreateBucket::execute()
   rgw_make_bucket_entry_name(s->bucket_tenant, s->bucket_name, bucket_name);
   rgw_raw_obj obj(store->get_zone_params().domain_root, bucket_name);
   obj_version objv, *pobjv = NULL;
+
+  perfcounter->inc(l_rgw_create_bucket);
 
   op_ret = get_params();
   if (op_ret < 0)
@@ -2926,6 +2937,8 @@ void RGWDeleteBucket::execute()
   RGWDeleteBucketLogGuard log_guard(store, s->bucket_name);
 
   op_ret = -EINVAL;
+
+  perfcounter->inc(l_rgw_delete_bucket);
 
   if (s->bucket_name.empty())
     return;
@@ -4386,6 +4399,8 @@ void RGWDeleteObj::execute()
 {
   RGWDeleteObjLogGuard log_guard(store, s->object.name);
 
+  perfcounter->inc(l_rgw_del);
+
   if (!s->bucket_exists) {
     op_ret = -ERR_NO_SUCH_BUCKET;
     log_guard.enoent = true;
@@ -4839,6 +4854,7 @@ void RGWPutACLs::pre_exec()
 void RGWGetLC::pre_exec()
 {
   rgw_bucket_object_pre_exec(s);
+  perfcounter->inc(l_rgw_get_lifecycle);
 }
 
 void RGWPutLC::pre_exec()
@@ -5005,6 +5021,8 @@ void RGWPutLC::execute()
   RGWLCXMLParser_S3 parser(s->cct);
   RGWLifecycleConfiguration_S3 new_config(s->cct);
 
+  perfcounter->inc(l_rgw_put_lifecycle);
+
   content_md5 = s->info.env->get("HTTP_CONTENT_MD5");
   if (content_md5 == nullptr) {
     op_ret = -ERR_INVALID_REQUEST;
@@ -5121,6 +5139,9 @@ void RGWDeleteLC::execute()
   map<string, bufferlist> orig_attrs, attrs;
   map<string, bufferlist>::iterator iter;
   rgw_raw_obj obj;
+
+  perfcounter->inc(l_rgw_del_lifecycle);
+
   store->get_bucket_instance_obj(s->bucket, obj);
   store->set_prefetch_data(s->obj_ctx, obj);
   op_ret = get_system_obj_attrs(store, s, obj, orig_attrs, NULL, &s->bucket_info.objv_tracker);

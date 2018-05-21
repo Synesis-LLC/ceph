@@ -79,7 +79,11 @@ class PerfCounterInstance
       avg_buffer = boost::circular_buffer<AvgDataPoint>(20);
     else
       buffer = boost::circular_buffer<DataPoint>(20);
-  };
+  }
+
+  uint64_t get_last() const;
+
+  PerfCounterInstance() = delete;
 };
 
 

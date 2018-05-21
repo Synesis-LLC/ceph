@@ -1069,7 +1069,7 @@ if(WITH_RADOSGW)
   target_include_directories(civetweb_common_objs PRIVATE
 	"${CMAKE_SOURCE_DIR}/src/civetweb/include")
   set_property(TARGET civetweb_common_objs
-    APPEND PROPERTY COMPILE_DEFINITIONS USE_IPV6=1)
+    APPEND PROPERTY COMPILE_DEFINITIONS USE_IPV6=1 USE_SERVER_STATS=1)
   if(USE_OPENSSL)
     set_property(TARGET civetweb_common_objs
       APPEND PROPERTY COMPILE_DEFINITIONS NO_SSL_DL=1)

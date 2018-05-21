@@ -51,7 +51,8 @@ RGWCivetWeb::RGWCivetWeb(mg_connection* const conn)
 
 size_t RGWCivetWeb::read_data(char *buf, size_t len)
 {
-  int c, ret;
+  size_t c;
+  int ret;
   if (got_eof_on_read) {
     return 0;
   }
@@ -89,7 +90,7 @@ int RGWCivetWeb::init_env(CephContext *cct)
   }
 
   for (int i = 0; i < info->num_headers; i++) {
-    const struct mg_request_info::mg_header* header = &info->http_headers[i];
+    const struct mg_header* header = &info->http_headers[i];
 
     if (header->name == nullptr || header->value==nullptr) {
       lderr(cct) << "client supplied malformatted headers" << dendl;
@@ -132,7 +133,7 @@ int RGWCivetWeb::init_env(CephContext *cct)
   env.set("REQUEST_METHOD", info->request_method);
   env.set("HTTP_VERSION", info->http_version);
   env.set("REQUEST_URI", info->request_uri); // get the full uri, we anyway handle abs uris later
-  env.set("SCRIPT_URI", info->uri); /* FIXME */
+  env.set("SCRIPT_URI", info->local_uri);
   if (info->query_string) {
     env.set("QUERY_STRING", info->query_string);
   }

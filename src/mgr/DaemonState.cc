@@ -179,3 +179,15 @@ void PerfCounterInstance::push_avg(utime_t t, uint64_t const &s,
 {
   avg_buffer.push_back({t, s, c});
 }
+
+uint64_t PerfCounterInstance::get_last() const
+{
+  if (buffer.size() > 0) {
+    return buffer.back().v;
+  } else if (avg_buffer.size() > 0) {
+    if (avg_buffer.back().c > 0) {
+      return avg_buffer.back().s / avg_buffer.back().c;
+    }
+  }
+  return 0;
+}

@@ -96,6 +96,7 @@ class RGWCivetWebFrontend : public RGWFrontend {
   RGWFrontendConfig* conf;
   struct mg_context* ctx;
   RGWMongooseEnv env;
+  pthread_t metrics_thread_id;
 
   void set_conf_default(std::multimap<std::string, std::string>& m,
                         const std::string& key,
@@ -113,6 +114,12 @@ public:
       env(env) {
   }
 
+  /* Metrics methods */
+  static void* civetweb_metrics_thread(void *arg);
+  void run_metrics_thread();
+  void process_metrics();
+  void stop_metrics_thread();
+
   int init() override {
     return 0;
   }
@@ -122,6 +129,10 @@ public:
   int process(struct mg_connection* conn);
 
   void stop() override {
+
+    /* Stop metrics thread */
+    stop_metrics_thread();
+
     if (ctx) {
       mg_stop(ctx);
     }
