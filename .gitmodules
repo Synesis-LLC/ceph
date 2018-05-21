@@ -4,7 +4,7 @@
 [submodule "src/civetweb"]
 	path = src/civetweb
 	url = git@git.synesis.ru:KipodDependencies/civetweb.git
-	branch = wip-log-access
+	branch = ceph-master
 [submodule "src/erasure-code/jerasure/jerasure"]
 	path = src/erasure-code/jerasure/jerasure
 	url = https://github.com/ceph/jerasure.git
