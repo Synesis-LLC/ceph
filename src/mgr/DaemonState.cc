@@ -171,3 +171,7 @@ void PerfCounterInstance::push(utime_t t, uint64_t const &v)
   buffer.push_back({t, v});
 }
 
+uint64_t PerfCounterInstance::get_last() const
+{
+  return buffer.back().v;
+}

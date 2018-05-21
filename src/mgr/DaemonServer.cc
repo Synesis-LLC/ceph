@@ -721,6 +721,18 @@ bool DaemonServer::handle_command(MCommand *m)
 	Mutex::Locker l(daemon->lock);
 	f->dump_stream("status_stamp") << daemon->service_status_stamp;
 	f->dump_stream("last_beacon") << daemon->last_service_beacon;
+
+    auto get_perfcounter_value = [&daemon](const char *name) -> uint64_t {
+        uint64_t ret = 0;
+        if (daemon->perf_counters.instances.find(name) != daemon->perf_counters.instances.end())
+            ret = daemon->perf_counters.instances[name].get_last();
+        return ret;
+    };
+
+    f->dump_stream("con_active") << get_perfcounter_value("rgw.con_active");
+    f->dump_stream("con_maxactive") << get_perfcounter_value("rgw.con_maxactive");
+    f->dump_stream("con_total") << get_perfcounter_value("rgw.con_total");
+
 	f->open_object_section("status");
 	for (auto& r : daemon->service_status) {
 	  f->dump_string(r.first.c_str(), r.second);

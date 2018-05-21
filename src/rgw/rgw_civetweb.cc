@@ -77,7 +77,7 @@ void RGWCivetWeb::init_env(CephContext *cct)
   }
 
   for (int i = 0; i < info->num_headers; i++) {
-    const struct mg_request_info::mg_header* header = &info->http_headers[i];
+    const auto header = &info->http_headers[i];
     const boost::string_ref name(header->name);
     const auto& value = header->value;
 
@@ -110,9 +110,11 @@ void RGWCivetWeb::init_env(CephContext *cct)
     env.set(buf, value);
   }
 
+  env.set("REMOTE_ADDR", info->remote_addr);
   env.set("REQUEST_METHOD", info->request_method);
+  env.set("HTTP_VERSION", info->http_version);
   env.set("REQUEST_URI", info->request_uri); // get the full uri, we anyway handle abs uris later
-  env.set("SCRIPT_URI", info->uri); /* FIXME */
+  env.set("SCRIPT_URI", info->local_uri);
   if (info->query_string) {
     env.set("QUERY_STRING", info->query_string);
   }

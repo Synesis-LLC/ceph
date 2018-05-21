@@ -135,7 +135,11 @@ rgw_http_errors rgw_http_swift_errors({
 
 int rgw_perf_start(CephContext *cct)
 {
-  PerfCountersBuilder plb(cct, cct->_conf->name.to_str(), l_rgw_first, l_rgw_last);
+  PerfCountersBuilder plb(cct, "rgw", l_rgw_first, l_rgw_last);
+
+  // RGW emits comparatively few metrics, so let's be generous
+  // and mark them all USEFUL to get transmission to ceph-mgr by default.
+  plb.set_prio_default(PerfCountersBuilder::PRIO_USEFUL);
 
   plb.add_u64_counter(l_rgw_req, "req", "Requests");
   plb.add_u64_counter(l_rgw_failed_req, "failed_req", "Aborted requests");
@@ -143,6 +147,11 @@ int rgw_perf_start(CephContext *cct)
   plb.add_u64_counter(l_rgw_get, "get", "Gets");
   plb.add_u64_counter(l_rgw_get_b, "get_b", "Size of gets");
   plb.add_time_avg(l_rgw_get_lat, "get_initial_lat", "Get latency");
+
+  plb.add_u64_counter(l_rgw_con_active, "con_active", "Active connections");
+  plb.add_u64_counter(l_rgw_con_maxactive, "con_maxactive", "Max active connections");
+  plb.add_u64_counter(l_rgw_con_total, "con_total", "Total connections");
+
   plb.add_u64_counter(l_rgw_put, "put", "Puts");
   plb.add_u64_counter(l_rgw_put_b, "put_b", "Size of puts");
   plb.add_time_avg(l_rgw_put_lat, "put_initial_lat", "Put latency");

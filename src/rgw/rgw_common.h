@@ -247,6 +247,10 @@ enum {
   l_rgw_get_b,
   l_rgw_get_lat,
 
+  l_rgw_con_active,
+  l_rgw_con_maxactive,
+  l_rgw_con_total,
+
   l_rgw_put,
   l_rgw_put_b,
   l_rgw_put_lat,

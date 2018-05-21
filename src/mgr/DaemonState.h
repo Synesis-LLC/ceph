@@ -54,6 +54,9 @@ class PerfCounterInstance
     return buffer;
   }
   void push(utime_t t, uint64_t const &v);
+
+  uint64_t get_last() const;
+
   PerfCounterInstance()
     : buffer(20) {}
 };
