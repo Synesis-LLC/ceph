@@ -1,3 +1,10 @@
+ceph (12.2.2-9) stable; urgency=medium
+
+  * fix bug in civetweb with absolute uri check
+  * disable logging for civetweb connections metrics
+
+ -- Yury Zhyhalka <aleksey.gutikov@synesis.ru>  Wed, 23 May 2018 12:04:17 +0300
+
 ceph (12.2.2-7) stable; urgency=medium
 
   * rgw metrics
