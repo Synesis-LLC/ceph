@@ -63,11 +63,9 @@ void RGWCivetWebFrontend::process_metrics()
     if (ret <= 0 || ret >= sizeof(buf)) {
         dout(10) << "RGWCivetWebFrontend::process_metrics: mg_get_context_info failed" << dendl;
         return;
-    }
-    assert(buf[ret] == '\0');
-    //buf[ret] = '\0';
-    if (buf[ret] == '\0')
-    dout(20) << "RGWCivetWebFrontend::process_metrics: mg_get_context_info buf: " << buf << dendl;
+    }    
+    buf[ret] = '\0';
+    // dout(20) << "RGWCivetWebFrontend::process_metrics: mg_get_context_info buf: " << buf << dendl;
 
     auto parse_int_from_json = [&buf](const char *collection, const char *variable) mutable -> int
     {
@@ -97,7 +95,7 @@ void RGWCivetWebFrontend::process_metrics()
     int con_maxactive = parse_int_from_json((const char *)"connections", (const char *)"maxActive");
     int con_total = parse_int_from_json((const char *)"connections", (const char *)"total");
 
-    dout(20) << "RGWCivetWebFrontend::process_metrics: conn active: " << con_active << " con_maxactive: " << con_maxactive << " con total: " << con_total << dendl;
+    // dout(20) << "RGWCivetWebFrontend::process_metrics: conn active: " << con_active << " con_maxactive: " << con_maxactive << " con total: " << con_total << dendl;
 
     perfcounter->set(l_rgw_con_active, con_active);
     perfcounter->set(l_rgw_con_maxactive, con_maxactive);
