@@ -509,7 +509,7 @@ class Module(MgrModule):
         osdmap_dump = osdmap.dump()
         crush = osdmap.get_crush()
         crush_dump = crush.dump()
-        osds = osdmap_dump.get('osds',[])
+        osds = {osd['osd']:osd for osd in osdmap_dump.get('osds',[])}
         devices = crush_dump['devices']
         osd_by_device_class = {}
         device_class = str(device_class)
@@ -521,12 +521,15 @@ class Module(MgrModule):
         for device in devices:
             osd_id = device['id']
             osd = osds[osd_id]
-            if osd['in'] == 1 and osd['up'] == 1:
-                if device['class'] not in osd_by_device_class:
-                    osd_by_device_class[device['class']] = set()
-                osd_by_device_class[device['class']].add(device['id'])
-            else:
+            if 'class' not in device:
+                self.log.error('No osd class: ' + json.dumps(device))
+                continue
+            if osd['in'] != 1 or osd['up'] != 1:
                 self.log.error('skip osd.%d in=%d up=%d' % (osd_id, osd['in'], osd['up']))
+                continue
+            if device['class'] not in osd_by_device_class:
+                osd_by_device_class[device['class']] = set()
+            osd_by_device_class[device['class']].add(device['id'])
 
         if device_class not in osd_by_device_class:
             return (-errno.EINVAL, 'Not found osd with device class "%s"' % device_class)
@@ -1151,31 +1154,37 @@ class Module(MgrModule):
 
         # group osds by device_class and filter up and in osds
         insane_stats = False
-        osds = ms.osdmap_dump.get('osds',[])
+        osds = {osd['osd']:osd for osd in ms.osdmap_dump.get('osds',[])}
         devices = ms.crush_dump['devices']
         self.log.error('collected %d devices, %d stats' % (len(devices), len(stats_by_osd)))
         for device in devices:
             osd_id = device['id']
+            if osd_id not in osds:
+                self.log.error('No osd: ' + json.dumps(device))
+                continue
             osd = osds[osd_id]
-            if osd['in'] == 1 and osd['up'] == 1:
-                if device['class'] not in plan.osd_by_device_class:
-                    plan.osd_by_device_class[device['class']] = {}
-                stat = stats_by_osd.get(osd_id)
-                if stat:
-                    plan.osd_by_device_class[device['class']][osd_id] = {
-                        'used'  : stat['kb_used'],
-                        'avail' : stat['kb_avail'],
-                        'size'  : stat['kb'],
-                        'current_weight' : osd['weight'],
-                    }
-                    if abs(stat['kb'] - (stat['kb_used'] + stat['kb_avail'])) > stats_sanity_kb:
-                        self.log.error('skip plan, insane stats: osd.%d : size=%d, avail=%d, used=%d' 
-                                      % (osd_id, stat['kb'], stat['kb_avail'], stat['kb_used']))
-                        insane_stats = True
-                else:
-                    self.log.error('no stats osd.%d' % osd_id)
-            else:
+            if osd['in'] != 1 or osd['up'] != 1:
                 self.log.error('skip osd.%d in=%d up=%d' % (osd_id, osd['in'], osd['up']))
+                continue
+            if 'class' not in device:
+                self.log.error('No osd class: ' + json.dumps(device))
+                continue
+            if device['class'] not in plan.osd_by_device_class:
+                plan.osd_by_device_class[device['class']] = {}
+            stat = stats_by_osd.get(osd_id)
+            if stat:
+                plan.osd_by_device_class[device['class']][osd_id] = {
+                    'used'  : stat['kb_used'],
+                    'avail' : stat['kb_avail'],
+                    'size'  : stat['kb'],
+                    'current_weight' : osd['weight'],
+                }
+                if abs(stat['kb'] - (stat['kb_used'] + stat['kb_avail'])) > stats_sanity_kb:
+                    self.log.error('skip plan, insane stats: osd.%d : size=%d, avail=%d, used=%d'
+                                  % (osd_id, stat['kb'], stat['kb_avail'], stat['kb_used']))
+                    insane_stats = True
+            else:
+                self.log.error('no stats osd.%d' % osd_id)
 
         return not insane_stats
 
