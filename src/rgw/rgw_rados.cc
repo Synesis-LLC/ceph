@@ -74,6 +74,8 @@ using namespace librados;
 
 #include "compressor/Compressor.h"
 
+#include "common/elapsed_logger.h"
+
 #define dout_context g_ceph_context
 #define dout_subsys ceph_subsys_rgw
 
@@ -5911,6 +5913,8 @@ done:
  */
 int RGWRados::create_pool(const rgw_pool& pool)
 {
+  elapsed_logger lg(__func__, [&](const std::string& msg){ ldout(cct, 1) << msg << dendl; });
+
   librados::IoCtx io_ctx;
   constexpr bool create = true;
   return rgw_init_ioctx(get_rados_handle(), pool, io_ctx, create);
@@ -7294,6 +7298,8 @@ int RGWRados::put_system_obj_impl(rgw_raw_obj& obj, uint64_t size, real_time *mt
               RGWObjVersionTracker *objv_tracker,
               real_time set_mtime /* 0 for don't set */)
 {
+  elapsed_logger lg(__func__, [&](const std::string& msg){ ldout(cct, 1) << msg << dendl; });
+
   rgw_rados_ref ref;
   int r = get_system_obj_ref(obj, &ref);
   if (r < 0)

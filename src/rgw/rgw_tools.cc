@@ -12,15 +12,19 @@
 #include "rgw_rados.h"
 #include "rgw_tools.h"
 
+#include "common/elapsed_logger.h"
+
 #define dout_subsys ceph_subsys_rgw
 
 #define READ_CHUNK_LEN (512 * 1024)
 
 static std::map<std::string, std::string>* ext_mime_map;
 
+
 int rgw_put_system_obj(RGWRados *rgwstore, const rgw_pool& pool, const string& oid, const char *data, size_t size, bool exclusive,
                        RGWObjVersionTracker *objv_tracker, real_time set_mtime, map<string, bufferlist> *pattrs)
 {
+  elapsed_logger lg(__func__, [&](const std::string& msg){ ldout(rgwstore->ctx(), 1) << msg << dendl; });
   map<string,bufferlist> no_attrs;
   if (!pattrs)
     pattrs = &no_attrs;

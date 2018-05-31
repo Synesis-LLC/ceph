@@ -16,6 +16,8 @@
 #include "include/assert.h"
 #include <boost/asio/yield.hpp>
 
+#include "common/elapsed_logger.h"
+
 #define dout_subsys ceph_subsys_rgw
 
 void LogStatusDump::dump(Formatter *f) const {
@@ -1042,6 +1044,8 @@ int RGWMetadataManager::remove_from_heap(RGWMetadataHandler *handler, const stri
 int RGWMetadataManager::put_entry(RGWMetadataHandler *handler, const string& key, bufferlist& bl, bool exclusive,
                                   RGWObjVersionTracker *objv_tracker, real_time mtime, map<string, bufferlist> *pattrs)
 {
+  elapsed_logger lg(__func__, [&](const std::string& msg){ ldout(store->ctx(), 1) << msg << dendl; });
+
   string section;
   RGWMetadataLogData log_data;
   int ret = pre_modify(handler, section, key, log_data, objv_tracker, MDLOG_STATUS_WRITE);

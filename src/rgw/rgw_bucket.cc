@@ -29,6 +29,8 @@
 
 #include "cls/user/cls_user_types.h"
 
+#include "common/elapsed_logger.h"
+
 #define dout_context g_ceph_context
 #define dout_subsys ceph_subsys_rgw
 
@@ -405,6 +407,7 @@ int rgw_bucket_set_attrs(RGWRados *store, RGWBucketInfo& bucket_info,
                          map<string, bufferlist>& attrs,
                          RGWObjVersionTracker *objv_tracker)
 {
+  elapsed_logger lg(__func__, [&](const std::string& msg){ ldout(store->ctx(), 1) << msg << dendl; });
   rgw_bucket& bucket = bucket_info.bucket;
 
   if (!bucket_info.has_instance_obj) {
