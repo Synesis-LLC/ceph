@@ -1012,6 +1012,12 @@ EOF
 }
 do_hitsets $hitset
 
+do_rgw_create_pools()
+{
+  ceph_adm osd pool create default.rgw.buckets.index 32 32
+  ceph_adm osd pool create default.rgw.buckets.data 64 64
+}
+
 do_rgw_create_users()
 {
     # Create S3 user
@@ -1062,7 +1068,8 @@ do_rgw_create_users()
 do_rgw()
 {
     if [ "$new" -eq 1 ]; then
-	do_rgw_create_users
+      do_rgw_create_pools
+      do_rgw_create_users
         if [ -n "$rgw_compression" ]; then
             echo "setting compression type=$rgw_compression"
             $CEPH_BIN/radosgw-admin zone placement modify -c $conf_fn --rgw-zone=default --placement-id=default-placement --compression=$rgw_compression > /dev/null
