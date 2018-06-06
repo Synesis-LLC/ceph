@@ -107,7 +107,7 @@ cephx=1 #turn cephx on by default
 cache=""
 memstore=0
 bluestore=0
-rgw_frontend="civetweb"
+rgw_frontend="civetweb enable_keep_alive=yes request_timeout_ms=30000 keep_alive_timeout_ms=500"
 rgw_compression=""
 osd_use_cgroup=0
 lockdep=${LOCKDEP:-1}
@@ -488,6 +488,7 @@ EOF
 
 [client.rgw]
         rgw_auto_create_pools = false
+        rgw_thread_pool_size = 2
 
         rgw_lc_threads_count = 3
 
@@ -526,6 +527,7 @@ $CMGRDEBUG
 $extra_conf
 [osd]
 $DAEMONOPTS
+        memstore_device_bytes = 17179869184
         osd_op_num_shards = 8
         osd_op_num_threads_per_shard = 2
         osd_max_write_size = 128
@@ -739,14 +741,14 @@ EOF
 
     # use tell mgr here because the first mgr might not have activated yet
     # to register the python module commands.
-    if ceph_adm tell mgr restful create-self-signed-cert; then
-        SF=`mktemp`
-        ceph_adm restful create-key admin -o $SF
-        RESTFUL_SECRET=`cat $SF`
-        rm $SF
-    else
-        echo MGR Restful is not working, perhaps the package is not installed?
-    fi
+#    if ceph_adm tell mgr restful create-self-signed-cert; then
+#        SF=`mktemp`
+#        ceph_adm restful create-key admin -o $SF
+#        RESTFUL_SECRET=`cat $SF`
+#        rm $SF
+#    else
+#        echo MGR Restful is not working, perhaps the package is not installed?
+#    fi
 }
 
 start_mds() {
