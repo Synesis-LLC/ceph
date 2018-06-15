@@ -1018,6 +1018,7 @@ do_rgw_create_pools()
 {
   ceph_adm osd pool create default.rgw.buckets.index 32 32
   ceph_adm osd pool create default.rgw.buckets.data 64 64
+  ceph_adm osd pool create default.rgw.buckets.non-ec 16 16
 }
 
 do_rgw_create_users()
