@@ -43,6 +43,7 @@ using namespace libradosstriper;
 #include <climits>
 #include <locale>
 #include <memory>
+#include <thread>
 
 #include "cls/lock/cls_lock_client.h"
 #include "include/compat.h"
@@ -322,7 +323,7 @@ static int do_get(IoCtx& io_ctx, RadosStriper& striper,
 }
 
 static int do_copy(IoCtx& io_ctx, const char *objname,
-		   IoCtx& target_ctx, const char *target_obj)
+       IoCtx& target_ctx, const char *target_obj)
 {
   __le32 src_fadvise_flags = LIBRADOS_OP_FLAG_FADVISE_SEQUENTIAL | LIBRADOS_OP_FLAG_FADVISE_NOCACHE;
   __le32 dest_fadvise_flags = LIBRADOS_OP_FLAG_FADVISE_SEQUENTIAL | LIBRADOS_OP_FLAG_FADVISE_DONTNEED;
@@ -333,7 +334,103 @@ static int do_copy(IoCtx& io_ctx, const char *objname,
   return target_ctx.operate(target_obj, &op);
 }
 
-static int do_copy_pool(Rados& rados, const char *src_pool, const char *target_pool)
+static int start_aio_copy(IoCtx& io_ctx, const char *objname, IoCtx& target_ctx, const char *target_obj, librados::AioCompletion* c)
+{
+  __le32 src_fadvise_flags = LIBRADOS_OP_FLAG_FADVISE_SEQUENTIAL | LIBRADOS_OP_FLAG_FADVISE_NOCACHE;
+  __le32 dest_fadvise_flags = LIBRADOS_OP_FLAG_FADVISE_SEQUENTIAL | LIBRADOS_OP_FLAG_FADVISE_DONTNEED;
+  ObjectWriteOperation op;
+  op.copy_from2(objname, io_ctx, 0, src_fadvise_flags);
+  op.set_op_flags2(dest_fadvise_flags);
+
+  return target_ctx.aio_operate(target_obj, c, &op);
+}
+
+class AioOps
+{
+public:
+  AioOps(size_t max_ops = 1):
+    max_concurrent_ops(max_ops)
+  {}
+
+  size_t drain_handles()
+  {
+    auto it = handles.begin();
+    while (it != handles.end()) {
+      if ((*it)->is_safe()) {
+        it = handles.erase(it);
+      } else {
+        ++it;
+      }
+    }
+    return handles.size();
+  }
+
+  void drain_all()
+  {
+    while (drain_handles() > 0) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+  }
+
+  librados::AioCompletion* get_next_completion()
+  {
+    librados::AioCompletion* c = nullptr;
+    if (max_concurrent_ops > handles.size()) {
+      c = librados::Rados::aio_create_completion(this, AioOps::complete_callback, AioOps::safe_callback);
+      if (c != nullptr) {
+        handles.push_back(c);
+      }
+    }
+    return c;
+  }
+
+  librados::AioCompletion* get_next_completion_maybe_wait(size_t timeout_s)
+  {
+    timeout_s *= 100;
+    librados::AioCompletion* c = nullptr;
+    while (c == nullptr && timeout_s > 0) {
+      c = get_next_completion();
+      timeout_s--;
+      if (c == nullptr) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        drain_handles();
+      }
+    }
+    return c;
+  }
+
+private:
+  std::list<librados::AioCompletion*> handles;
+  size_t max_concurrent_ops;
+
+  static void safe_callback(completion_t cb, void *arg)
+  {
+    AioOps* ops = (AioOps*) arg;
+    ops->do_safe_callback(cb);
+  }
+
+  void do_safe_callback(completion_t cb)
+  {
+    librados::AioCompletionImpl* c = (librados::AioCompletionImpl*) cb;
+
+    //cout << "safe_callback " << c << std::endl;
+  }
+
+  static void complete_callback(completion_t cb, void *arg)
+  {
+    AioOps* ops = (AioOps*) arg;
+    ops->do_complete_callback(cb);
+  }
+
+  void do_complete_callback(completion_t cb)
+  {
+    librados::AioCompletionImpl* c = (librados::AioCompletionImpl*) cb;
+
+    //cout << "complete_callback " << c << std::endl;
+  }
+};
+
+static int do_copy_pool(Rados& rados, const char *src_pool, const char *target_pool, size_t concurrent_ops)
 {
   IoCtx src_ctx, target_ctx;
   int ret = rados.ioctx_create(src_pool, src_ctx);
@@ -346,6 +443,7 @@ static int do_copy_pool(Rados& rados, const char *src_pool, const char *target_p
     cerr << "cannot open target pool: " << target_pool << std::endl;
     return ret;
   }
+  AioOps ops(concurrent_ops);
   src_ctx.set_namespace(all_nspaces);
   librados::NObjectIterator i = src_ctx.nobjects_begin();
   librados::NObjectIterator i_end = src_ctx.nobjects_end();
@@ -364,12 +462,22 @@ static int do_copy_pool(Rados& rados, const char *src_pool, const char *target_p
     src_ctx.locator_set_key(locator);
     src_ctx.set_namespace(nspace);
     target_ctx.set_namespace(nspace);
-    ret = do_copy(src_ctx, oid.c_str(), target_ctx, oid.c_str());
+
+    librados::AioCompletion* c = ops.get_next_completion_maybe_wait(60);
+    if (c == nullptr) {
+      cerr << "can't get next completion" << std::endl;
+      break;
+      ret = -EIO;
+    }
+
+    int ret = start_aio_copy(src_ctx, oid.c_str(), target_ctx, oid.c_str(), c);
     if (ret < 0) {
-      cerr << "error copying object: " << cpp_strerror(errno) << std::endl;
-      return ret;
+      cerr << "error start_aio_copy " << ret << std::endl;
+      break;
     }
   }
+
+  ops.drain_all();
 
   return 0;
 }
@@ -2886,7 +2994,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
       }
     }
 
-    ret = do_copy_pool(rados, src_pool, target_pool);
+    ret = do_copy_pool(rados, src_pool, target_pool, concurrent_ios);
     if (ret < 0) {
       cerr << "error copying pool " << src_pool << " => " << target_pool << ": "
 	   << cpp_strerror(ret) << std::endl;
