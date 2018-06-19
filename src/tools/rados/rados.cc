@@ -585,7 +585,6 @@ static int do_rsync_pool(Rados& rados, const char *src_pool, const char *target_
       }
     }
     ops.drain_all();
-    std::cout << "removed " << rm_diff.size() << " objects completed" << std::endl;
     if (ret < 0) {
       return ret;
     }
@@ -622,11 +621,12 @@ static int do_rsync_pool(Rados& rados, const char *src_pool, const char *target_
       }
     }
     ops.drain_all();
-    std::cout << "copied " << cp_diff.size() << " objects completed" << std::endl;
     if (ret < 0) {
       return ret;
     }
   }
+  std::cout << "removed " << rm_diff.size() << " objects" << std::endl;
+  std::cout << "copied " << cp_diff.size() << " objects" << std::endl;
 
   return 0;
 }
