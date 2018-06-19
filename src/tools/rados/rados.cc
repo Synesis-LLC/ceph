@@ -44,6 +44,11 @@ using namespace libradosstriper;
 #include <locale>
 #include <memory>
 #include <thread>
+#include <algorithm>
+#include <iterator>
+#include <set>
+#include <vector>
+#include <tuple>
 
 #include "cls/lock/cls_lock_client.h"
 #include "include/compat.h"
@@ -70,6 +75,7 @@ void usage(ostream& out)
 "   cppool <pool-name> <dest-pool>   copy content of a pool\n"
 "   rmpool <pool-name> [<pool-name> --yes-i-really-really-mean-it]\n"
 "                                    remove pool <pool-name>'\n"
+"   rsyncp <pool-name> <dest-pool>   rsync content of a pool\n"
 "   purge <pool-name> --yes-i-really-really-mean-it\n"
 "                                    remove all objects from pool <pool-name> without removing it\n"
 "   df                               show per-pool and total usage\n"
@@ -409,7 +415,7 @@ private:
 
   void do_safe_callback(completion_t cb)
   {
-    librados::AioCompletionImpl* c = (librados::AioCompletionImpl*) cb;
+    //librados::AioCompletionImpl* c = (librados::AioCompletionImpl*) cb;
 
     //cout << "safe_callback " << c << std::endl;
   }
@@ -422,7 +428,7 @@ private:
 
   void do_complete_callback(completion_t cb)
   {
-    librados::AioCompletionImpl* c = (librados::AioCompletionImpl*) cb;
+    //librados::AioCompletionImpl* c = (librados::AioCompletionImpl*) cb;
 
     //cout << "complete_callback " << c << std::endl;
   }
@@ -464,8 +470,8 @@ static int do_copy_pool(Rados& rados, const char *src_pool, const char *target_p
     librados::AioCompletion* c = ops.get_next_completion_maybe_wait(60);
     if (c == nullptr) {
       cerr << "can't get next completion" << std::endl;
-      break;
       ret = -EIO;
+      break;
     }
 
     int ret = start_aio_copy(src_ctx, oid.c_str(), target_ctx, oid.c_str(), c);
@@ -474,8 +480,142 @@ static int do_copy_pool(Rados& rados, const char *src_pool, const char *target_p
       break;
     }
   }
-
   ops.drain_all();
+  if (ret < 0) {
+    return ret;
+  }
+
+  return 0;
+}
+
+static int start_aio_rm(IoCtx& target_ctx, const char *target_obj, librados::AioCompletion* c)
+{
+  __le32 dest_fadvise_flags = LIBRADOS_OP_FLAG_FADVISE_SEQUENTIAL | LIBRADOS_OP_FLAG_FADVISE_DONTNEED;
+  ObjectWriteOperation op;
+  op.remove();
+  op.set_op_flags2(dest_fadvise_flags);
+
+  return target_ctx.aio_operate(target_obj, c, &op);
+}
+
+static int do_rsync_pool(Rados& rados, const char *src_pool, const char *target_pool, size_t concurrent_ops)
+{
+  IoCtx src_ctx, target_ctx;
+  int ret = rados.ioctx_create(src_pool, src_ctx);
+  if (ret < 0) {
+    cerr << "cannot open source pool: " << src_pool << std::endl;
+    return ret;
+  }
+  ret = rados.ioctx_create(target_pool, target_ctx);
+  if (ret < 0) {
+    cerr << "cannot open target pool: " << target_pool << std::endl;
+    return ret;
+  }
+
+  typedef std::tuple<std::string, std::string, std::string> obj_desc_t;
+  std::set<obj_desc_t> src_objs;
+  std::set<obj_desc_t> dst_objs;
+
+  src_ctx.set_namespace(all_nspaces);
+  librados::NObjectIterator src_it = src_ctx.nobjects_begin();
+  librados::NObjectIterator src_end = src_ctx.nobjects_end();
+  for (; src_it != src_end; ++src_it) {
+    auto ires = src_objs.emplace(src_it->get_nspace(), src_it->get_oid(), src_it->get_locator());
+    std::cout << "SRC " << std::get<0>(*ires.first) << " | " << std::get<1>(*ires.first) << " | " << std::get<2>(*ires.first) << std::endl;
+  }
+  target_ctx.set_namespace(all_nspaces);
+  librados::NObjectIterator dst_it = target_ctx.nobjects_begin();
+  librados::NObjectIterator dst_end = target_ctx.nobjects_end();
+  for (; dst_it != dst_end; ++dst_it) {
+    auto ires = dst_objs.emplace(dst_it->get_nspace(), dst_it->get_oid(), dst_it->get_locator());
+    std::cout << "DST " << std::get<0>(*ires.first) << " | " << std::get<1>(*ires.first) << " | " << std::get<2>(*ires.first) << std::endl;
+  }
+
+  std::vector<obj_desc_t> cp_diff;
+  std::vector<obj_desc_t> rm_diff;
+  for (const auto& p : src_objs) {
+    if (dst_objs.find(p) == dst_objs.end()) {
+      cp_diff.emplace_back(p);
+      std::cout << "ADD " << std::get<0>(p) << " | " << std::get<1>(p) << " | " << std::get<2>(p) << std::endl;
+    }
+  }
+  for (const auto& p : dst_objs) {
+    if (src_objs.find(p) == src_objs.end()) {
+      rm_diff.emplace_back(p);
+      std::cout << "RM " << std::get<0>(p) << " | " << std::get<1>(p) << " | " << std::get<2>(p) << std::endl;
+    }
+  }
+
+  std::cout << "remove " << rm_diff.size() << " objects, copy " << cp_diff.size() << " objects" << std::endl;
+
+  AioOps ops(concurrent_ops);
+
+  if (rm_diff.size() > 0) {
+    for (const auto& p : rm_diff) {
+      const string& nspace = std::get<0>(p);
+      const string& oid = std::get<1>(p);
+      const string& locator = std::get<2>(p);
+      string name = (nspace.size() ? nspace + "/" : "") + oid + (locator.size() ? "(@" + locator + ")" : "");
+      std::cout << "rm " << target_pool << ":" << name << std::endl;
+
+      target_ctx.set_namespace(nspace);
+
+      librados::AioCompletion* c = ops.get_next_completion_maybe_wait(60);
+      if (c == nullptr) {
+        cerr << "can't get next completion" << std::endl;
+        ret = -EIO;
+        break;
+      }
+
+      int ret = start_aio_rm(target_ctx, oid.c_str(), c);
+      if (ret < 0) {
+        cerr << "error start_aio_rm " << ret << std::endl;
+        break;
+      }
+    }
+    ops.drain_all();
+    std::cout << "removed " << rm_diff.size() << " objects completed" << std::endl;
+    if (ret < 0) {
+      return ret;
+    }
+  }
+
+  if (cp_diff.size() > 0) {
+    for (const auto& p : cp_diff) {
+      const string nspace = std::get<0>(p);
+      const string oid = std::get<1>(p);
+      const string locator = std::get<2>(p);
+
+      string target_name = (nspace.size() ? nspace + "/" : "") + oid;
+      string src_name = target_name;
+      if (locator.size())
+          src_name += "(@" + locator + ")";
+      std::cout << src_pool << ":" << src_name  << " => "
+           << target_pool << ":" << target_name << std::endl;
+
+      src_ctx.locator_set_key(locator);
+      src_ctx.set_namespace(nspace);
+      target_ctx.set_namespace(nspace);
+
+      librados::AioCompletion* c = ops.get_next_completion_maybe_wait(60);
+      if (c == nullptr) {
+        cerr << "can't get next completion" << std::endl;
+        ret = -EIO;
+        break;
+      }
+
+      int ret = start_aio_copy(src_ctx, oid.c_str(), target_ctx, oid.c_str(), c);
+      if (ret < 0) {
+        cerr << "error start_aio_copy " << ret << std::endl;
+        break;
+      }
+    }
+    ops.drain_all();
+    std::cout << "copied " << cp_diff.size() << " objects completed" << std::endl;
+    if (ret < 0) {
+      return ret;
+    }
+  }
 
   return 0;
 }
@@ -2932,6 +3072,42 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
       goto out;
     }
     cout << "successfully copied pool " << nargs[1] << std::endl;
+  }
+  else if (strcmp(nargs[0], "rsyncp") == 0) {
+    bool force = nargs.size() == 4 && !strcmp(nargs[3], "--yes-i-really-mean-it");
+    if (nargs.size() != 3 && !(nargs.size() == 4 && force))
+      usage_exit();
+    const char *src_pool = nargs[1];
+    const char *target_pool = nargs[2];
+
+    if (strcmp(src_pool, target_pool) == 0) {
+      cerr << "cannot sync pool into itself" << std::endl;
+      ret = -1;
+      goto out;
+    }
+
+		cerr << "WARNING: pool sync does not preserve user_version, which some "
+	 << "    apps may rely on." << std::endl;
+
+    if (rados.get_pool_is_selfmanaged_snaps_mode(src_pool)) {
+      cerr << "WARNING: pool " << src_pool << " has selfmanaged snaps, which are not preserved\n"
+     << "    by the cppool operation.  This will break any snapshot user."
+     << std::endl;
+      if (!force) {
+  cerr << "    If you insist on making a broken sync, you can pass\n"
+       << "    --yes-i-really-mean-it to proceed anyway."
+       << std::endl;
+  exit(1);
+      }
+    }
+
+    ret = do_rsync_pool(rados, src_pool, target_pool, concurrent_ios);
+    if (ret < 0) {
+      cerr << "error syncing pool " << src_pool << " => " << target_pool << ": "
+     << cpp_strerror(ret) << std::endl;
+      goto out;
+    }
+    cout << "successfully synced pool " << nargs[1] << std::endl;
   }
   else if (strcmp(nargs[0], "rmpool") == 0) {
     if (nargs.size() < 2)
