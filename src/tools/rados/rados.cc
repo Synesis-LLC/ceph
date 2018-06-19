@@ -498,6 +498,19 @@ static int start_aio_rm(IoCtx& target_ctx, const char *target_obj, librados::Aio
   return target_ctx.aio_operate(target_obj, c, &op);
 }
 
+typedef std::tuple<std::string, std::string, std::string> obj_desc_t;
+std::string make_name(const std::string& nspace, const std::string& oid, const std::string& locator)
+{
+  return (nspace.size() ? nspace + "/" : "") + oid + (locator.size() ? "(@" + locator + ")" : "");
+}
+std::string make_name(const obj_desc_t& d)
+{
+  const string& nspace = std::get<0>(d);
+  const string& oid = std::get<1>(d);
+  const string& locator = std::get<2>(d);
+  return make_name(nspace, oid, locator);
+}
+
 static int do_rsync_pool(Rados& rados, const char *src_pool, const char *target_pool, size_t concurrent_ops)
 {
   IoCtx src_ctx, target_ctx;
@@ -512,7 +525,6 @@ static int do_rsync_pool(Rados& rados, const char *src_pool, const char *target_
     return ret;
   }
 
-  typedef std::tuple<std::string, std::string, std::string> obj_desc_t;
   std::set<obj_desc_t> src_objs;
   std::set<obj_desc_t> dst_objs;
 
@@ -521,28 +533,28 @@ static int do_rsync_pool(Rados& rados, const char *src_pool, const char *target_
   librados::NObjectIterator src_end = src_ctx.nobjects_end();
   for (; src_it != src_end; ++src_it) {
     auto ires = src_objs.emplace(src_it->get_nspace(), src_it->get_oid(), src_it->get_locator());
-    std::cout << "SRC " << std::get<0>(*ires.first) << " | " << std::get<1>(*ires.first) << " | " << std::get<2>(*ires.first) << std::endl;
+    std::cout << src_pool << ":" << make_name(*ires.first) << std::endl;
   }
   target_ctx.set_namespace(all_nspaces);
   librados::NObjectIterator dst_it = target_ctx.nobjects_begin();
   librados::NObjectIterator dst_end = target_ctx.nobjects_end();
   for (; dst_it != dst_end; ++dst_it) {
     auto ires = dst_objs.emplace(dst_it->get_nspace(), dst_it->get_oid(), dst_it->get_locator());
-    std::cout << "DST " << std::get<0>(*ires.first) << " | " << std::get<1>(*ires.first) << " | " << std::get<2>(*ires.first) << std::endl;
+    std::cout << target_pool << ":" << make_name(*ires.first) << std::endl;
   }
 
   std::vector<obj_desc_t> cp_diff;
   std::vector<obj_desc_t> rm_diff;
-  for (const auto& p : src_objs) {
-    if (dst_objs.find(p) == dst_objs.end()) {
-      cp_diff.emplace_back(p);
-      std::cout << "ADD " << std::get<0>(p) << " | " << std::get<1>(p) << " | " << std::get<2>(p) << std::endl;
-    }
-  }
   for (const auto& p : dst_objs) {
     if (src_objs.find(p) == src_objs.end()) {
       rm_diff.emplace_back(p);
-      std::cout << "RM " << std::get<0>(p) << " | " << std::get<1>(p) << " | " << std::get<2>(p) << std::endl;
+      std::cout << "- " << make_name(p) << std::endl;
+    }
+  }
+  for (const auto& p : src_objs) {
+    if (dst_objs.find(p) == dst_objs.end()) {
+      cp_diff.emplace_back(p);
+      std::cout << "+ " << make_name(p) << std::endl;
     }
   }
 
@@ -552,11 +564,10 @@ static int do_rsync_pool(Rados& rados, const char *src_pool, const char *target_
 
   if (rm_diff.size() > 0) {
     for (const auto& p : rm_diff) {
-      const string& nspace = std::get<0>(p);
-      const string& oid = std::get<1>(p);
-      const string& locator = std::get<2>(p);
-      string name = (nspace.size() ? nspace + "/" : "") + oid + (locator.size() ? "(@" + locator + ")" : "");
-      std::cout << "rm " << target_pool << ":" << name << std::endl;
+      const string nspace = std::get<0>(p);
+      const string oid = std::get<1>(p);
+      const string locator = std::get<2>(p);
+      std::cout << "rm " << target_pool << ":" << make_name(nspace, oid, locator) << std::endl;
 
       target_ctx.set_namespace(nspace);
 
@@ -590,7 +601,7 @@ static int do_rsync_pool(Rados& rados, const char *src_pool, const char *target_
       string src_name = target_name;
       if (locator.size())
           src_name += "(@" + locator + ")";
-      std::cout << src_pool << ":" << src_name  << " => "
+      std::cout << "cp " << src_pool << ":" << src_name << " "
            << target_pool << ":" << target_name << std::endl;
 
       src_ctx.locator_set_key(locator);
