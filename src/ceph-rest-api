@@ -102,12 +102,14 @@ def parse_ceph_conf(confpath, defaults={}):
             key = a[0].strip()
             key = '_'.join(key.split())
             value = '='.join(a[1:]).strip()
-            if value[0] == '"' and value[-1] == '"':
-                value = line[1:-1]
-            if value[0] == "'" and value[-1] == "'":
-                value = line[1:-1]
-            cfg[current_section][key] = value
-
+            if len(value) > 0:
+                if value[0] == '"' and value[-1] == '"':
+                    value = line[1:-1]
+                if value[0] == "'" and value[-1] == "'":
+                    value = line[1:-1]
+                cfg[current_section][key] = value
+            else:
+                cfg[current_section][key] = ""
     return cfg
 
 

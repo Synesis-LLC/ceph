@@ -2,6 +2,8 @@
 Description=Ceph REST API daemon
 After=network.target
 
+PartOf=ceph.target
+
 [Service]
 ExecStart=/usr/bin/ceph-rest-api
 ExecReload=/bin/kill -HUP $MAINPID
@@ -16,3 +18,4 @@ RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
+WantedBy=ceph.target
