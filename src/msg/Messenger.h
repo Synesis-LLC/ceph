@@ -513,6 +513,9 @@ public:
    * @param dest The entity to get a connection for.
    */
   virtual ConnectionRef get_connection(const entity_inst_t& dest) = 0;
+
+  virtual void dump_conn_stats(Formatter* fmt) const { }
+
   /**
    * Get the Connection object associated with ourselves.
    */

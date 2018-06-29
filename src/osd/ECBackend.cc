@@ -1419,6 +1419,13 @@ void ECBackend::on_flushed()
 {
 }
 
+void ECBackend::dump_extent_cache(Formatter *f) const
+{
+  f->open_object_section("extent_cache");
+  cache.dump(f);
+  f->close_section();
+}
+
 void ECBackend::dump_recovery_info(Formatter *f) const
 {
   f->open_array_section("recovery_ops");

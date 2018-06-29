@@ -1023,6 +1023,8 @@ protected:
   set<hobject_t> backfills_in_flight;
   map<hobject_t, pg_stat_t> pending_backfill_updates;
 
+  void dump_object_contexts(Formatter *f) const override;
+
   void dump_recovery_info(Formatter *f) const override {
     f->open_array_section("backfill_targets");
     for (set<pg_shard_t>::const_iterator p = backfill_targets.begin();

@@ -482,6 +482,8 @@ public:
     release_pin(pin);
   }
 
+  void dump(Formatter* f) const;
+
   ostream &print(
     ostream &out) const;
 };

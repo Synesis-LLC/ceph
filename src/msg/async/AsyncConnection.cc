@@ -2444,6 +2444,38 @@ void AsyncConnection::mark_down()
   _stop();
 }
 
+void AsyncConnection::dump_buffers_size(Formatter *fmt) const
+{
+  fmt->open_object_section("rx_buffers");
+  for (const auto& p : rx_buffers) {
+    fmt->dump_int("tid", p.first);
+    fmt->dump_int("length", p.second.first.length());
+    fmt->dump_int("raw_size", p.second.first.raw_size());
+    fmt->dump_int("i", p.second.second);
+  }
+  fmt->close_section();
+
+  fmt->open_object_section("data_buf");
+  fmt->dump_int("length", data_buf.length());
+  fmt->dump_int("raw_size", data_buf.raw_size());
+  fmt->close_section();
+
+  fmt->open_object_section("front");
+  fmt->dump_int("length", front.length());
+  fmt->dump_int("raw_size", front.raw_size());
+  fmt->close_section();
+
+  fmt->open_object_section("middle");
+  fmt->dump_int("length", middle.length());
+  fmt->dump_int("raw_size", middle.raw_size());
+  fmt->close_section();
+
+  fmt->open_object_section("data");
+  fmt->dump_int("length", data.length());
+  fmt->dump_int("raw_size", data.raw_size());
+  fmt->close_section();
+}
+
 void AsyncConnection::_append_keepalive_or_ack(bool ack, utime_t *tp)
 {
   ldout(async_msgr->cct, 10) << __func__ << dendl;
