@@ -1,3 +1,11 @@
+ceph (12.2.2-11) stable; urgency=medium
+
+  * Add rados rsyncp command
+  * buffer: add configurable copy of small pieces of relatively big buffer::ptr
+  * osd: add admin commands dump_messengers and dump_primary_pgs
+
+ -- Aleksei Gutikov <aleksey.gutikov@synesis.ru>  Fri, 29 Jun 2018 16:06:17 +0300
+
 ceph (12.2.2-10) stable; urgency=medium
 
   * fix buf in civetweb with descriptors bigger than 1024
