@@ -39,6 +39,10 @@
 
 using namespace ceph;
 
+#define BUFFER_MIN_SIZE_COPY_FROM (64*1024)
+#define BUFFER_MAX_SIZE_TO_COPY (256*1024)
+#define BUFFER_MIN_RATIO_TO_COPY (16)
+
 #define CEPH_BUFFER_ALLOC_UNIT  (MIN(CEPH_PAGE_SIZE, 4096))
 #define CEPH_BUFFER_APPEND_SIZE (CEPH_BUFFER_ALLOC_UNIT - sizeof(raw_combined))
 
@@ -1303,8 +1307,18 @@ static std::atomic_flag buffer_debug_lock = ATOMIC_FLAG_INIT;
       unsigned howmuch = p->length() - p_off;
       if (len < howmuch)
 	howmuch = len;
-      dest.append(*p, p_off, howmuch);
 
+      uint32_t raw_len = p->get_raw()->len;
+      if (howmuch <= BUFFER_MAX_SIZE_TO_COPY
+          && raw_len >= BUFFER_MIN_SIZE_COPY_FROM
+#if (BUFFER_MIN_RATIO_TO_COPY > (BUFFER_MIN_SIZE_COPY_FROM / BUFFER_MAX_SIZE_TO_COPY))
+          && howmuch < (raw_len / BUFFER_MIN_RATIO_TO_COPY)
+#endif
+      ){
+        dest.append(std::move(ptr(p->c_str() + p_off, howmuch)));
+      } else {
+        dest.append(*p, p_off, howmuch);
+      }
       len -= howmuch;
       advance(howmuch);
     }
