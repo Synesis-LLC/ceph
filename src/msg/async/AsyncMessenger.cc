@@ -546,6 +546,43 @@ ConnectionRef AsyncMessenger::get_connection(const entity_inst_t& dest)
   return conn;
 }
 
+void AsyncMessenger::dump_conn_stats(Formatter* fmt) const
+{
+  fmt->open_array_section("conns");
+  {
+    Mutex::Locker l(lock);
+    for (const auto& p : conns) {
+      fmt->open_object_section("connection");
+      p.first.dump(fmt);
+      p.second->dump_buffers_size(fmt);
+      fmt->close_section();
+    }
+  }
+  fmt->close_section();
+
+  fmt->open_array_section("accepting_conns");
+  {
+    Mutex::Locker l(lock);
+    for (const auto& conn : accepting_conns) {
+      fmt->open_object_section("connection");
+      conn->dump_buffers_size(fmt);
+      fmt->close_section();
+    }
+  }
+  fmt->close_section();
+
+  fmt->open_array_section("deleted_conns");
+  {
+    Mutex::Locker l(deleted_lock);
+    for (const auto& conn : deleted_conns) {
+      fmt->open_object_section("connection");
+      conn->dump_buffers_size(fmt);
+      fmt->close_section();
+    }
+  }
+  fmt->close_section();
+}
+
 ConnectionRef AsyncMessenger::get_loopback_connection()
 {
   return local_connection;

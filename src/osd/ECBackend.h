@@ -99,6 +99,7 @@ public:
 
   void on_flushed() override;
 
+  void dump_extent_cache(Formatter *f) const override;
   void dump_recovery_info(Formatter *f) const override;
 
   void call_write_ordered(std::function<void(void)> &&cb) override;

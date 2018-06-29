@@ -149,6 +149,7 @@ public:
    * @{
    */
   ConnectionRef get_connection(const entity_inst_t& dest) override;
+  void dump_conn_stats(Formatter* fmt) const override;
   ConnectionRef get_loopback_connection() override;
   void mark_down(const entity_addr_t& addr) override;
   void mark_down_all() override {
@@ -229,7 +230,7 @@ private:
   std::string ms_type;
 
   /// overall lock used for AsyncMessenger data structures
-  Mutex lock;
+  mutable Mutex lock;
   // AsyncMessenger stuff
   /// approximately unique ID set by the Constructor for use in entity_addr_t
   uint64_t nonce;
@@ -290,7 +291,7 @@ private:
    * deleted for AsyncConnection. "_lookup_conn" must ensure not return a
    * AsyncConnection in this set.
    */
-  Mutex deleted_lock;
+  mutable Mutex deleted_lock;
   set<AsyncConnectionRef> deleted_conns;
 
   EventCallbackRef reap_handler;

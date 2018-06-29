@@ -80,6 +80,9 @@ static std::atomic_flag buffer_debug_lock = ATOMIC_FLAG_INIT;
   }
   } // namespace
 
+  bool buffer::get_track_alloc() {
+    return buffer_track_alloc;
+  }
   int buffer::get_total_alloc() {
     return buffer_total_alloc;
   }
@@ -948,6 +951,15 @@ static std::atomic_flag buffer_debug_lock = ATOMIC_FLAG_INIT;
     other._raw = r;
     other._off = o;
     other._len = l;
+  }
+
+  size_t buffer::ptr::raw_size() const
+  {
+    if (_raw) {
+      return _raw->len;
+    } else {
+      return 0;
+    }
   }
 
   void buffer::ptr::release()

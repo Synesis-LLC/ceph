@@ -14,6 +14,7 @@
 
 #include "include/mempool.h"
 #include "include/demangle.h"
+#include "include/buffer.h"
 
 
 // default to debug_mode off
@@ -49,6 +50,12 @@ void mempool::dump(ceph::Formatter *f)
     f->close_section();
   }
   f->dump_object("total", total);
+  f->open_object_section("track");
+  f->dump_bool("track_alloc", buffer::get_track_alloc());
+  f->dump_int("total_alloc", buffer::get_total_alloc());
+  f->dump_int("history_alloc_bytes", buffer::get_history_alloc_bytes());
+  f->dump_int("history_alloc_num", buffer::get_history_alloc_num());
+  f->close_section();
 }
 
 void mempool::set_debug_mode(bool d)

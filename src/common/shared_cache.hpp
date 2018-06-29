@@ -148,6 +148,23 @@ public:
     }
   }
 
+  void dump(Formatter *f) const
+  {
+    f->open_array_section("weak_refs");
+    for (const auto& p : weak_refs) {
+      f->open_object_section("weak_ref");
+      std::stringstream ss;
+      ss << p.first;
+      f->dump_string("key", ss.str());
+      f->open_object_section("value");
+      p.second.second->dump(f);
+      f->close_section();
+      f->dump_int("use_count", p.second.first.use_count());
+      f->close_section();
+    }
+    f->close_section();
+  }
+
   //clear all strong reference from the lru.
   void clear() {
     while (true) {

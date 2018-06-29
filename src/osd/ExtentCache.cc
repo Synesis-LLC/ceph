@@ -13,6 +13,7 @@
  */
 
 #include "ExtentCache.h"
+#include "common/Formatter.h"
 
 void ExtentCache::extent::_link_pin_state(pin_state &pin_state)
 {
@@ -216,6 +217,37 @@ void ExtentCache::present_rmw_update(
   }
 }
 
+void ExtentCache::dump(Formatter* f) const
+{
+  f->open_array_section("objects");
+  for (auto esiter = per_object_caches.begin();
+       esiter != per_object_caches.end();
+       ++esiter) {
+    f->open_object_section("object");
+    std::stringstream oid_ss;
+    oid_ss << esiter->oid;
+    f->dump_string("oid", oid_ss.str());
+    f->open_array_section("extents");
+    for (auto exiter = esiter->extent_set.begin();
+         exiter != esiter->extent_set.end();
+         ++exiter) {
+      f->open_object_section("extent");
+      f->dump_int("offset", exiter->offset);
+      f->dump_int("length", exiter->get_length());
+      std::stringstream tid_ss;
+      tid_ss << exiter->pin_tid();
+      f->dump_string("pin_tid", tid_ss.str());
+      std::stringstream bl_ss;
+      bl_ss << exiter->bl;
+      f->dump_string("bl", bl_ss.str());
+      f->close_section();
+    }
+    f->close_section();
+    f->close_section();
+  }
+  f->close_section();
+}
+
 ostream &ExtentCache::print(ostream &out) const
 {
   out << "ExtentCache(" << std::endl;
@@ -229,7 +261,9 @@ ostream &ExtentCache::print(ostream &out) const
       out << "    Extent(" << exiter->offset
 	  << "~" << exiter->get_length()
 	  << ":" << exiter->pin_tid()
-	  << ")" << std::endl;
+	  << ") "
+	  << exiter->bl
+	  << std::endl;
     }
   }
   return out << ")" << std::endl;

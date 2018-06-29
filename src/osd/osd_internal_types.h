@@ -59,6 +59,17 @@ public:
   // attr cache
   map<string, bufferlist> attr_cache;
 
+  void dump(Formatter* f) const
+  {
+    f->open_object_section("attr_cache");
+    for (const auto& p : attr_cache) {
+      std::stringstream ss;
+      ss << p.second;
+      f->dump_string(p.first.c_str(), ss.str());
+    }
+    f->close_section();
+  }
+
   struct RWState {
     enum State {
       RWNONE,

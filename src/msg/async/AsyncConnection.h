@@ -212,6 +212,8 @@ class AsyncConnection : public Connection {
     std::lock_guard<std::mutex> l(lock);
     policy.lossy = true;
   }
+
+  void dump_buffers_size(Formatter *fmt) const;
   
  private:
   enum {

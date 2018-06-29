@@ -91,6 +91,11 @@ public:
     return new RPCReadPred(get_parent()->whoami_shard());
   }
 
+  void dump_extent_cache(Formatter *f) const override
+  {
+
+  }
+
   void dump_recovery_info(Formatter *f) const override {
     {
       f->open_array_section("pull_from_peer");

@@ -701,7 +701,10 @@ EOF
 
           find /sys/fs/cgroup/blkio/$osd_cgroup_name
         else
+          #export HEAPPROFILE=$CEPH_OUT_DIR/osd.$osd.profile
+          #export CEPH_BUFFER_TRACK=y
           run 'osd' $SUDO $CEPH_BIN/ceph-osd -i $osd $ARGS $COSD_ARGS
+          #unset CEPH_BUFFER_TRACK
         fi
     done
 }
@@ -1016,9 +1019,10 @@ do_hitsets $hitset
 
 do_rgw_create_pools()
 {
-  ceph_adm osd pool create default.rgw.buckets.index 32 32
-  ceph_adm osd pool create default.rgw.buckets.data 64 64
+  ceph_adm osd pool create default.rgw.buckets.index 16 16
   ceph_adm osd pool create default.rgw.buckets.non-ec 16 16
+  #ceph_adm osd pool create default.rgw.buckets.data 32 32
+  ceph osd pool create default.rgw.buckets.data 16 16 erasure
 }
 
 do_rgw_create_users()

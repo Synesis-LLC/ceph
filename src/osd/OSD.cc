@@ -2062,6 +2062,57 @@ bool OSD::asok_command(string admin_command, cmdmap_t& cmdmap, string format,
     f->close_section();
   } else if (admin_command == "flush_journal") {
     store->flush_journal();
+  } else if (admin_command == "dump_messengers") {
+    f->open_object_section("messengers");
+
+    f->open_object_section("cluster_messenger");
+    cluster_messenger->dump_conn_stats(f);
+    f->close_section();
+
+    f->open_object_section("client_messenger");
+    client_messenger->dump_conn_stats(f);
+    f->close_section();
+
+    f->open_object_section("objecter_messenger");
+    objecter_messenger->dump_conn_stats(f);
+    f->close_section();
+
+    f->open_object_section("hb_front_client_messenger");
+    hb_front_client_messenger->dump_conn_stats(f);
+    f->close_section();
+
+    f->open_object_section("hb_back_client_messenger");
+    hb_back_client_messenger->dump_conn_stats(f);
+    f->close_section();
+
+    f->open_object_section("hb_front_server_messenger");
+    hb_front_server_messenger->dump_conn_stats(f);
+    f->close_section();
+
+    f->open_object_section("hb_back_server_messenger");
+    hb_back_server_messenger->dump_conn_stats(f);
+    f->close_section();
+
+    f->close_section();
+  } else if (admin_command == "dump_primary_pgs") {
+    f->open_array_section("primary_pgs");
+
+    for (auto& pg_it : pg_map) {
+      PG* pg = pg_it.second;
+      if (pg && pg->is_primary() && pg->is_ec_pg()) {
+        f->open_object_section("pg");
+        f->open_object_section("pgid");
+        pg->get_pgid().pgid.dump(f);
+        f->close_section();
+        f->open_object_section("backend");
+        pg->get_pgbackend()->dump_extent_cache(f);
+        f->close_section();
+        pg->dump_object_contexts(f);
+        f->close_section();
+      }
+    }
+
+    f->close_section();
   } else if (admin_command == "dump_ops_in_flight" ||
              admin_command == "ops" ||
              admin_command == "dump_blocked_ops" ||
@@ -2729,6 +2780,14 @@ void OSD::final_init()
                                      asok_hook,
                                      "flush the journal to permanent store");
   assert(r == 0);
+  r = admin_socket->register_command("dump_messengers", "dump_messengers",
+             asok_hook,
+             "show some messangers internals");
+  assert(r == 0);
+  r = admin_socket->register_command("dump_primary_pgs", "dump_primary_pgs",
+             asok_hook,
+             "show some pgs internals");
+  assert(r == 0);
   r = admin_socket->register_command("dump_ops_in_flight",
 				     "dump_ops_in_flight " \
 				     "name=filterstr,type=CephString,n=N,req=false",
@@ -3313,6 +3372,8 @@ int OSD::shutdown()
   // unregister commands
   cct->get_admin_socket()->unregister_command("status");
   cct->get_admin_socket()->unregister_command("flush_journal");
+  cct->get_admin_socket()->unregister_command("dump_messengers");
+  cct->get_admin_socket()->unregister_command("dump_primary_pgs");
   cct->get_admin_socket()->unregister_command("dump_ops_in_flight");
   cct->get_admin_socket()->unregister_command("ops");
   cct->get_admin_socket()->unregister_command("dump_blocked_ops");

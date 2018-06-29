@@ -10279,6 +10279,13 @@ SnapSetContext *PrimaryLogPG::get_snapset_context(
   return ssc;
 }
 
+void PrimaryLogPG::dump_object_contexts(Formatter *f) const
+{
+  f->open_object_section("object_contexts");
+  object_contexts.dump(f);
+  f->close_section();
+}
+
 void PrimaryLogPG::put_snapset_context(SnapSetContext *ssc)
 {
   Mutex::Locker l(snapset_contexts_lock);

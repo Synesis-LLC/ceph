@@ -99,6 +99,7 @@ namespace buffer CEPH_BUFFER_API {
     int code;
   };
 
+  bool get_track_alloc();
 
   /// total bytes allocated
   int get_total_alloc();
@@ -176,6 +177,9 @@ namespace buffer CEPH_BUFFER_API {
     unsigned _off, _len;
 
     void release();
+
+  public:
+    size_t raw_size() const;
 
   public:
     class iterator {
@@ -357,6 +361,15 @@ namespace buffer CEPH_BUFFER_API {
 
   public:
     class iterator;
+
+    size_t raw_size() const
+    {
+      size_t size = append_buffer.raw_size();
+      for (const auto& p : _buffers) {
+        size += p.raw_size();
+      }
+      return size;
+    }
 
   private:
     template <bool is_const>
