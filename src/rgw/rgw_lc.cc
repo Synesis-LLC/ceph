@@ -428,17 +428,32 @@ int RGWLC::bucket_lc_process(string& shard_id)
             if (ret < 0) {
               return ret;
             }
-            if (state->mtime != obj_iter->meta.mtime)//Check mtime again to avoid delete a recently update object as much as possible
-              continue;
+
+            //Check mtime again to avoid delete a recently update object as much as possible
+            if (state->mtime != obj_iter->meta.mtime) {
+
+              // Sometimes object can have different state mtime and object mtime for a long period
+              // Let's check if object expired according to state mtime too
+              is_expired = obj_has_expired(now - ceph::real_clock::to_time_t(state->mtime), prefix_iter->second.expiration);
+
+              dout(5) << "RGWLC::bucket_lc_process:" << thread_id << " WARNING!!! " << bucket_name << "/" << obj_iter->key
+                      << " has different state mtime: " << state->mtime << " and object mtime: " << obj_iter->meta.mtime << dendl;
+
+              // If object expired according to both of mtimes, let's delete it, don't skip it
+              if (!is_expired) {
+                continue;
+              }
+            }
+
             ret = remove_expired_obj(bucket_info, obj_iter->key, true);
             if (ret == -ENOENT) {
-              ldout(cct, 5) << __LINE__ << ": remove_expired_obj "
+              ldout(cct, 5) << __LINE__ << ": RGWLC::bucket_lc_process: remove_expired_obj "
                             << bucket_name << "/" << obj_iter->key << " : ENOENT" << dendl;
             } else if (ret < 0) {
-              ldout(cct, 0) << __LINE__ << ": ERROR: remove_expired_obj "
+              ldout(cct, 0) << __LINE__ << ": RGWLC::bucket_lc_process: ERROR: remove_expired_obj "
                             << bucket_name << "/" << obj_iter->key << " : " << ret << dendl;
             } else {
-              ldout(cct, 10) << __LINE__ << ": DELETED:"
+              ldout(cct, 10) << __LINE__ << ": RGWLC::bucket_lc_process: DELETED:"
                              << bucket_name << "/" << obj_iter->key << dendl;
             }
 
