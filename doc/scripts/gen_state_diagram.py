@@ -160,8 +160,8 @@ class StateMachineRenderer(object):
                 top_level.append(state)
         print('Top Level States: ', top_level, file=sys.stderr)
         print('digraph G {')
-        print('\tsize="7,7"')
         print('\tcompound=true;')
+        print('\tnewrank=true;')
         for i in self.emit_state(top_level[0]):
             print('\t' + i)
         for i in self.edges.keys():
