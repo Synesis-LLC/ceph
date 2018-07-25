@@ -36,7 +36,7 @@ COMMAND("pg ls " \
 	"name=states,type=CephString,n=N,req=false", \
 	"list pg with specific pool, osd, state", "pg", "r", "cli,rest")
 COMMAND("pg dump_stuck " \
-	"name=stuckops,type=CephChoices,strings=inactive|unclean|stale|undersized|degraded,n=N,req=false " \
+	"name=stuckops,type=CephChoices,strings=summary|inactive|unclean|stale|undersized|degraded,n=N,req=false " \
 	"name=threshold,type=CephInt,req=false",
 	"show information about stuck pgs",\
 	"pg", "r", "cli,rest")

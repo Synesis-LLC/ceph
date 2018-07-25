@@ -469,6 +469,9 @@ public:
 			   Formatter *f,
 			   int threshold,
 			   vector<string>& args) const;
+  void dump_stuck_pg_summary(stringstream &ds,
+                             Formatter *f,
+                             int threshold) const;
   void dump(ostream& ss) const;
   void dump_basic(ostream& ss) const;
   void dump_pg_stats(ostream& ss, bool brief) const;
