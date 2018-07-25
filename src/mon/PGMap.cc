@@ -2113,6 +2113,36 @@ void PGMap::dump_stuck_plain(ostream& ss, int types, utime_t cutoff) const
     dump_pg_stats_plain(ss, stuck_pg_stats, true);
 }
 
+void PGMap::dump_stuck_pg_summary(
+  stringstream &ds,
+  Formatter *f,
+  int threshold) const
+{
+  map<string, int> counts;
+  utime_t cutoff = utime_t(ceph_clock_now()) - utime_t(threshold, 0);
+  get_stuck_counts(cutoff, counts);
+  if (!f) {
+    for (const auto& p : counts) {
+      if (p.first != counts.begin()->first) {
+        ds << ", ";
+      }
+      ds << p.first.substr(6) << ": " << p.second;
+    }
+  } else {
+    f->open_object_section("stuck_pg_summary");
+    std::set<std::string> states = {"inactive", "unclean", "stale", "undersized", "degraded"};
+    for (const auto& p : counts) {
+      f->dump_int(p.first.substr(6).c_str(), p.second);
+      states.erase(p.first.substr(6).c_str());
+    }
+    for (const auto& state : states) {
+      f->dump_int(state.c_str(), 0);
+    }
+    f->close_section();
+    f->flush(ds);
+  }
+}
+
 int PGMap::dump_stuck_pg_stats(
   stringstream &ds,
   Formatter *f,
@@ -4028,7 +4058,11 @@ int process_pg_map_command(
     cmd_getval(g_ceph_context, cmdmap, "threshold", threshold,
                g_conf->get_val<int64_t>("mon_pg_stuck_threshold"));
 
-    r = pg_map.dump_stuck_pg_stats(ds, f, (int)threshold, stuckop_vec);
+    if (stuckop_vec[0] == "summary") {
+      pg_map.dump_stuck_pg_summary(ds, f, (int)threshold);
+    } else {
+      r = pg_map.dump_stuck_pg_stats(ds, f, (int)threshold, stuckop_vec);
+    }
     odata->append(ds);
     if (r < 0)
       *ss << "failed";
