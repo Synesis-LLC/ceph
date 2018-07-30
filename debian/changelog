@@ -1,3 +1,9 @@
+ceph (12.2.2-13) stable; urgency=medium
+
+  * rgw: additional rgw metrics added 
+
+ -- Yury Zhyhalka <yury.zhyhalka@yuryz.synesis.local>  Mon, 30 Jul 2018 18:48:29 +0300
+
 ceph (12.2.2-12) stable; urgency=medium
 
   * rgw: delete expited objects with different state and object mtime
