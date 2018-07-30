@@ -141,20 +141,32 @@ int rgw_perf_start(CephContext *cct)
   // and mark them all USEFUL to get transmission to ceph-mgr by default.
   plb.set_prio_default(PerfCountersBuilder::PRIO_USEFUL);
 
+  plb.add_u64_counter(l_rgw_con_active, "con_active", "Active connections");
+  plb.add_u64_counter(l_rgw_con_maxactive, "con_maxactive", "Max active connections");
+  plb.add_u64_counter(l_rgw_con_total, "con_total", "Total connections");
+
   plb.add_u64_counter(l_rgw_req, "req", "Requests");
   plb.add_u64_counter(l_rgw_failed_req, "failed_req", "Aborted requests");
+
+  plb.add_u64_counter(l_rgw_list_buckets, "list_buckets", "Lists buckets");
+  plb.add_u64_counter(l_rgw_list_bucket, "list_bucket", "Lists bucket");
+  plb.add_u64_counter(l_rgw_get_bucket_location, "get_bucket_location", "Gets bucket location");
+  plb.add_u64_counter(l_rgw_create_bucket, "create_bucket", "Creates bucket");
+  plb.add_u64_counter(l_rgw_delete_bucket, "delete_bucket", "Deletes bucket");
 
   plb.add_u64_counter(l_rgw_get, "get", "Gets");
   plb.add_u64_counter(l_rgw_get_b, "get_b", "Size of gets");
   plb.add_time_avg(l_rgw_get_lat, "get_initial_lat", "Get latency");
 
-  plb.add_u64_counter(l_rgw_con_active, "con_active", "Active connections");
-  plb.add_u64_counter(l_rgw_con_maxactive, "con_maxactive", "Max active connections");
-  plb.add_u64_counter(l_rgw_con_total, "con_total", "Total connections");
-
   plb.add_u64_counter(l_rgw_put, "put", "Puts");
   plb.add_u64_counter(l_rgw_put_b, "put_b", "Size of puts");
   plb.add_time_avg(l_rgw_put_lat, "put_initial_lat", "Put latency");
+
+  plb.add_u64_counter(l_rgw_del, "del", "Deletes");
+
+  plb.add_u64_counter(l_rgw_get_lifecycle, "get_lifecycle", "Gets lifecycles");
+  plb.add_u64_counter(l_rgw_put_lifecycle, "put_lifecycle", "Puts lifecycles");
+  plb.add_u64_counter(l_rgw_del_lifecycle, "del_lifecycle", "Deletes lifecycles");
 
   plb.add_u64(l_rgw_qlen, "qlen", "Queue length");
   plb.add_u64(l_rgw_qactive, "qactive", "Active requests queue");

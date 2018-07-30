@@ -741,7 +741,7 @@ public:
   RGWGetBucketLocation() {}
   ~RGWGetBucketLocation() override {}
   int verify_permission() override;
-  void execute() override { }
+  void execute() override;
 
   void send_response() override = 0;
   const string name() override { return "get_bucket_location"; }

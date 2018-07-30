@@ -240,20 +240,33 @@ extern void rgw_perf_stop(CephContext *cct);
 
 enum {
   l_rgw_first = 15000,
-  l_rgw_req,
-  l_rgw_failed_req,
-
-  l_rgw_get,
-  l_rgw_get_b,
-  l_rgw_get_lat,
 
   l_rgw_con_active,
   l_rgw_con_maxactive,
   l_rgw_con_total,
 
+  l_rgw_req,
+  l_rgw_failed_req,
+
+  l_rgw_list_buckets,
+  l_rgw_list_bucket,  
+  l_rgw_get_bucket_location,
+  l_rgw_create_bucket,
+  l_rgw_delete_bucket,
+
+  l_rgw_get,
+  l_rgw_get_b,
+  l_rgw_get_lat,
+
   l_rgw_put,
   l_rgw_put_b,
   l_rgw_put_lat,
+
+  l_rgw_del,
+
+  l_rgw_get_lifecycle,
+  l_rgw_put_lifecycle,
+  l_rgw_del_lifecycle,
 
   l_rgw_qlen,
   l_rgw_qactive,
