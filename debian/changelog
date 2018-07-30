@@ -1,3 +1,11 @@
+ceph (12.2.2-12) stable; urgency=medium
+
+  * rgw: delete expited objects with different state and object mtime
+  * mgr: add summary option for pg dump_stuck command
+  * rgw: civetweb: fix access log request duration
+
+ -- Aleksei Gutikov <aleksey.gutikov@synesis.ru>  Mon, 30 Jul 2018 16:23:14 +0300
+
 ceph (12.2.2-11) stable; urgency=medium
 
   * Add rados rsyncp command
