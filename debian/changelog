@@ -1,3 +1,9 @@
+ceph (12.2.2-13.1) UNRELEASED; urgency=medium
+
+  * adjust logs for debug
+
+ -- Aleksei Gutikov <aleksey.gutikov@synesis.ru>  Tue, 07 Aug 2018 11:09:58 +0300
+
 ceph (12.2.2-13) stable; urgency=medium
 
   * rgw: additional rgw metrics added 
