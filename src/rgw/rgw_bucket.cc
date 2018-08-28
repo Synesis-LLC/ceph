@@ -29,7 +29,7 @@
 
 #include "cls/user/cls_user_types.h"
 
-#include "elapsed_logger.h"
+#include "common/elapsed_logger.h"
 
 #define dout_context g_ceph_context
 #define dout_subsys ceph_subsys_rgw

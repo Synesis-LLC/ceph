@@ -16,7 +16,7 @@
 #include "include/assert.h"
 #include <boost/asio/yield.hpp>
 
-#include "elapsed_logger.h"
+#include "common/elapsed_logger.h"
 
 #define dout_subsys ceph_subsys_rgw
 

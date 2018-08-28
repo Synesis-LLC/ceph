@@ -50,7 +50,6 @@ set(rgw_a_srcs
   rgw_cache.cc
   rgw_client_io.cc
   rgw_common.cc
-  elapsed_logger.cc
   rgw_compression.cc
   rgw_cors.cc
   rgw_cors_s3.cc

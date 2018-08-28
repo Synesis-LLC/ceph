@@ -413,6 +413,7 @@ set(libcommon_files
   common/DecayCounter.cc
   common/LogClient.cc
   common/LogEntry.cc
+  common/elapsed_logger.cc
   common/PrebufferedStreambuf.cc
   common/BackTrace.cc
   common/perf_counters.cc

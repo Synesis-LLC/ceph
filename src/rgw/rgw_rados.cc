@@ -75,7 +75,7 @@ using namespace librados;
 
 #include "compressor/Compressor.h"
 
-#include "elapsed_logger.h"
+#include "common/elapsed_logger.h"
 
 #define dout_context g_ceph_context
 #define dout_subsys ceph_subsys_rgw

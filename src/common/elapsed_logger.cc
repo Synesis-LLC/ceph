@@ -1,4 +1,4 @@
-#include "elapsed_logger.h"
+#include "common/elapsed_logger.h"
 
 thread_local int elapsed_logger::level = 0;
 
@@ -19,6 +19,6 @@ elapsed_logger::~elapsed_logger()
   std::stringstream ss;
   ss << level << " " << msg << " elapsed "
      << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - started).count()
-     << "us";
+     << " us";
   log_callback(ss.str());
 }
