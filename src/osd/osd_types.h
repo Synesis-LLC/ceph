@@ -905,6 +905,9 @@ struct osd_stat_t {
   uint64_t seq = 0;
 
   uint32_t num_pgs = 0;
+  uint32_t num_pgs_max = 0;
+
+  std::string device_class = "unknown";
 
   osd_stat_t() : kb(0), kb_used(0), kb_avail(0),
 		 snap_trim_queue_len(0), num_snap_trimming(0) {}
@@ -918,6 +921,8 @@ struct osd_stat_t {
     op_queue_age_hist.add(o.op_queue_age_hist);
     os_perf_stat.add(o.os_perf_stat);
     num_pgs += o.num_pgs;
+    num_pgs_max = 0;
+    device_class = "none";
   }
   void sub(const osd_stat_t& o) {
     kb -= o.kb;
@@ -928,6 +933,8 @@ struct osd_stat_t {
     op_queue_age_hist.sub(o.op_queue_age_hist);
     os_perf_stat.sub(o.os_perf_stat);
     num_pgs -= o.num_pgs;
+    num_pgs_max = 0;
+    device_class = "none";
   }
 
   void dump(Formatter *f) const;

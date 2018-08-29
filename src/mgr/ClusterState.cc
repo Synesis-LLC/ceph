@@ -128,6 +128,10 @@ void ClusterState::update_delta_stats()
   jf.flush(*_dout);
   *_dout << dendl;
 
+  objecter->with_osdmap([this](const OSDMap &osd_map){
+    pending_inc.update_device_class(osd_map);
+  });
+
   pg_map.apply_incremental(g_ceph_context, pending_inc);
   pending_inc = PGMap::Incremental();
 }
@@ -165,6 +169,8 @@ void ClusterState::notify_osdmap(const OSDMap &osd_map)
   jf.dump_object("pending_inc", pending_inc);
   jf.flush(*_dout);
   *_dout << dendl;
+
+  pending_inc.update_device_class(osd_map);
 
   pg_map.apply_incremental(g_ceph_context, pending_inc);
   pending_inc = PGMap::Incremental();

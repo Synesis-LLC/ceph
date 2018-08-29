@@ -1048,7 +1048,8 @@ public:
   void update_osd_stat(vector<int>& hb_peers);
   osd_stat_t set_osd_stat(const struct store_statfs_t &stbuf,
                           vector<int>& hb_peers,
-			  int num_pgs);
+                          int num_pgs, int num_pgs_max,
+                          const std::string& device_class);
   osd_stat_t get_osd_stat() {
     Mutex::Locker l(stat_lock);
     ++seq;
@@ -1945,6 +1946,7 @@ protected:
   // -- placement groups --
   RWLock pg_map_lock; // this lock orders *above* individual PG _locks
   ceph::unordered_map<spg_t, PG*> pg_map; // protected by pg_map lock
+  size_t pg_map_max_size = 0;
 
   std::mutex pending_creates_lock;
   std::set<pg_t> pending_creates_from_osd;
@@ -1965,6 +1967,15 @@ public:
     RWLock::RLocker l(pg_map_lock);
     return pg_map.size();
   }
+
+  void check_pg_map_max_size() {
+    size_t size = get_num_pgs();
+    if (pg_map_max_size < size) {
+        pg_map_max_size = size;
+    }
+  }
+
+  size_t get_pg_map_max_size() { return pg_map_max_size; }
 
 protected:
   PG   *_open_lock_pg(OSDMapRef createmap,
@@ -2411,6 +2422,9 @@ private:
 private:
   int mon_cmd_maybe_osd_create(string &cmd);
   int update_crush_device_class();
+  std::string get_crush_device_class();
+  std::string _get_crush_device_class();
+  std::string crush_device_class = "";
   int update_crush_location();
 
   static int write_meta(CephContext *cct,
@@ -2431,7 +2445,6 @@ private:
 public:
   static int peek_meta(ObjectStore *store, string& magic,
 		       uuid_d& cluster_fsid, uuid_d& osd_fsid, int& whoami);
-  
 
   // startup/shutdown
   int pre_init();

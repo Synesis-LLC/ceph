@@ -124,6 +124,13 @@ int get_block_device_base(const char *dev, char *out, size_t out_len)
   return r;
 }
 
+struct closedir_guard
+{
+  DIR *dir;
+  closedir_guard(DIR *dir) : dir(dir) {}
+  virtual ~closedir_guard() { closedir(dir); }
+};
+
 /**
  * get a block device slaves' names
  *
@@ -140,6 +147,7 @@ std::vector<std::string> get_block_device_slaves(const char *devname)
   dir = opendir(dirname);
   if (!dir)
     return result;
+  closedir_guard cdg(dir);
 
   struct dirent *de = nullptr;
   while ((de = ::readdir(dir))) {
