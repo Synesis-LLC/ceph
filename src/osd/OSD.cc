@@ -930,7 +930,8 @@ void OSDService::set_injectfull(s_names type, int64_t count)
 
 osd_stat_t OSDService::set_osd_stat(const struct store_statfs_t &stbuf,
                                     vector<int>& hb_peers,
-				    int num_pgs)
+                                    int num_pgs, int num_pgs_max,
+                                    const std::string& device_class)
 {
   uint64_t bytes = stbuf.total;
   uint64_t used = bytes - stbuf.available;
@@ -948,6 +949,8 @@ osd_stat_t OSDService::set_osd_stat(const struct store_statfs_t &stbuf,
     osd_stat.kb_used = used >> 10;
     osd_stat.kb_avail = avail >> 10;
     osd_stat.num_pgs = num_pgs;
+    osd_stat.num_pgs_max = num_pgs_max;
+    osd_stat.device_class = device_class;
     return osd_stat;
   }
 }
@@ -962,7 +965,9 @@ void OSDService::update_osd_stat(vector<int>& hb_peers)
     return;
   }
 
-  auto new_stat = set_osd_stat(stbuf, hb_peers, osd->get_num_pgs());
+  osd->check_pg_map_max_size();
+  auto new_stat = set_osd_stat(stbuf, hb_peers, osd->get_num_pgs(),
+                               osd->get_pg_map_max_size(), osd->get_crush_device_class());
   dout(20) << "update_osd_stat " << new_stat << dendl;
   assert(new_stat.kb);
   float ratio = ((float)new_stat.kb_used) / ((float)new_stat.kb);
@@ -3667,6 +3672,24 @@ int OSD::update_crush_location()
   return mon_cmd_maybe_osd_create(cmd);
 }
 
+std::string OSD::_get_crush_device_class()
+{
+  std::string device_class;
+  int r = store->read_meta("crush_device_class", &device_class);
+  if (r < 0 || device_class.empty()) {
+    device_class = store->get_default_device_class();
+  }
+  return device_class;
+}
+
+std::string OSD::get_crush_device_class()
+{
+  if (crush_device_class.empty()) {
+    crush_device_class = _get_crush_device_class();
+  }
+  return crush_device_class;
+}
+
 int OSD::update_crush_device_class()
 {
   if (!cct->_conf->osd_class_update_on_start) {
@@ -3674,11 +3697,7 @@ int OSD::update_crush_device_class()
     return 0;
   }
 
-  string device_class;
-  int r = store->read_meta("crush_device_class", &device_class);
-  if (r < 0 || device_class.empty()) {
-    device_class = store->get_default_device_class();
-  }
+  string device_class = _get_crush_device_class();
 
   if (device_class.empty()) {
     dout(20) << __func__ << " no device class stored locally" << dendl;
@@ -3690,7 +3709,7 @@ int OSD::update_crush_device_class()
     string("\"class\": \"") + device_class + string("\", ") +
     string("\"ids\": [\"") + stringify(whoami) + string("\"]}");
 
-  r = mon_cmd_maybe_osd_create(cmd);
+  int r = mon_cmd_maybe_osd_create(cmd);
   // the above cmd can fail for various reasons, e.g.:
   //   (1) we are connecting to a pre-luminous monitor
   //   (2) user manually specify a class other than
@@ -4454,6 +4473,7 @@ int OSD::handle_pg_peering_evt(
       dispatch_context(rctx, pg, osdmap);
 
       dout(10) << *pg << " is new" << dendl;
+      check_pg_map_max_size_with_map_lock_held();
 
       pg->queue_peering_event(evt);
       wake_pg_waiters(pg);
@@ -4489,6 +4509,7 @@ int OSD::handle_pg_peering_evt(
       dispatch_context(rctx, pg, osdmap);
 
       dout(10) << *pg << " is new (resurrected)" << dendl;
+      check_pg_map_max_size_with_map_lock_held();
 
       pg->queue_peering_event(evt);
       wake_pg_waiters(pg);
@@ -4526,6 +4547,7 @@ int OSD::handle_pg_peering_evt(
       dispatch_context(rctx, parent, osdmap);
 
       dout(10) << *parent << " is new" << dendl;
+      check_pg_map_max_size_with_map_lock_held();
 
       assert(service.splitting(pgid));
       peering_wait_for_split[pgid].push_back(evt);
@@ -4572,7 +4594,7 @@ bool OSD::maybe_wait_for_max_pg(spg_t pgid, bool is_mon_create)
     pending_creates_from_osd.emplace(pgid.pgid, is_primary);
   }
   dout(0) << __func__ << " withhold creation of pg " << pgid
-	  << ": " << pg_map.size() << " >= "<< max_pgs_per_osd << dendl;
+          << ": " << pg_map.size() << " >= "<< max_pgs_per_osd << dendl;
   return true;
 }
 

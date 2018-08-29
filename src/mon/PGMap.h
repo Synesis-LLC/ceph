@@ -301,6 +301,11 @@ public:
       osd_epochs.erase(osd);
       osd_stat_updates.erase(osd);
     }
+    void update_device_class(const OSDMap &osd_map) {
+      for (auto &p : osd_stat_updates) {
+        p.second.device_class = osd_map.crush->get_item_class(p.first);
+      }
+    }
     void encode(bufferlist &bl, uint64_t features=-1) const;
     void decode(bufferlist::iterator &bl);
     void dump(Formatter *f) const;
@@ -481,8 +486,8 @@ public:
   void dump_osd_sum_stats(ostream& ss) const;
   void dump_filtered_pg_stats(ostream& ss, set<pg_t>& pgs) const;
 
-  void dump_osd_perf_stats(Formatter *f, const OSDMap& osdmap) const;
-  void print_osd_perf_stats(std::ostream *ss, const OSDMap& osdmap) const;
+  void dump_osd_perf_stats(Formatter *f) const;
+  void print_osd_perf_stats(std::ostream *ss) const;
 
   void dump_osd_blocked_by_stats(Formatter *f) const;
   void print_osd_blocked_by_stats(std::ostream *ss) const;

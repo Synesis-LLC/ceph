@@ -310,6 +310,8 @@ void osd_stat_t::dump(Formatter *f) const
   f->dump_unsigned("up_from", up_from);
   f->dump_unsigned("seq", seq);
   f->dump_unsigned("num_pgs", num_pgs);
+  f->dump_unsigned("num_pgs_max", num_pgs_max);
+  f->dump_string("device_class", device_class);
   f->dump_unsigned("kb", kb);
   f->dump_unsigned("kb_used", kb_used);
   f->dump_unsigned("kb_avail", kb_avail);
@@ -329,7 +331,7 @@ void osd_stat_t::dump(Formatter *f) const
 
 void osd_stat_t::encode(bufferlist &bl) const
 {
-  ENCODE_START(7, 2, bl);
+  ENCODE_START(8, 2, bl);
   ::encode(kb, bl);
   ::encode(kb_used, bl);
   ::encode(kb_avail, bl);
@@ -342,6 +344,8 @@ void osd_stat_t::encode(bufferlist &bl) const
   ::encode(up_from, bl);
   ::encode(seq, bl);
   ::encode(num_pgs, bl);
+  ::encode(num_pgs_max, bl);
+  ::encode(device_class, bl);
   ENCODE_FINISH(bl);
 }
 
@@ -366,6 +370,10 @@ void osd_stat_t::decode(bufferlist::iterator &bl)
   }
   if (struct_v >= 7) {
     ::decode(num_pgs, bl);
+  }
+  if (struct_v >= 8) {
+    ::decode(num_pgs_max, bl);
+    ::decode(device_class, bl);
   }
   DECODE_FINISH(bl);
 }

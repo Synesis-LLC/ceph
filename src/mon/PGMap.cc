@@ -1955,6 +1955,8 @@ void PGMap::dump_osd_stats(ostream& ss) const
   tab.define_column("HB_PEERS", TextTable::LEFT, TextTable::RIGHT);
   tab.define_column("PG_SUM", TextTable::LEFT, TextTable::RIGHT);
   tab.define_column("PRIMARY_PG_SUM", TextTable::LEFT, TextTable::RIGHT);
+  tab.define_column("PGS_MAX", TextTable::LEFT, TextTable::RIGHT);
+  tab.define_column("DEVICE_CLASS", TextTable::LEFT, TextTable::RIGHT);
 
   for (auto p = osd_stat.begin();
        p != osd_stat.end();
@@ -1966,6 +1968,8 @@ void PGMap::dump_osd_stats(ostream& ss) const
         << p->second.hb_peers
         << get_num_pg_by_osd(p->first)
         << get_num_primary_pg_by_osd(p->first)
+        << p->second.num_pgs_max
+        << p->second.device_class
         << TextTable::endrow;
   }
 
@@ -2181,7 +2185,7 @@ int PGMap::dump_stuck_pg_stats(
   return 0;
 }
 
-void PGMap::dump_osd_perf_stats(Formatter *f, const OSDMap& osd_map) const
+void PGMap::dump_osd_perf_stats(Formatter *f) const
 {
   f->open_array_section("osd_perf_infos");
   for (auto i = osd_stat.begin();
@@ -2189,20 +2193,17 @@ void PGMap::dump_osd_perf_stats(Formatter *f, const OSDMap& osd_map) const
        ++i) {
     f->open_object_section("osd");
     f->dump_int("id", i->first);
+    f->dump_string("device_class", i->second.device_class);
     {
       f->open_object_section("perf_stats");
       i->second.os_perf_stat.dump(f);
       f->close_section();
     }
-    const char* c = osd_map.crush->get_item_class(i->first);
-    if (c) {
-      f->dump_string("device_class", c);
-    }
     f->close_section();
   }
   f->close_section();
 }
-void PGMap::print_osd_perf_stats(std::ostream *ss, const OSDMap& osd_map) const
+void PGMap::print_osd_perf_stats(std::ostream *ss) const
 {
   TextTable tab;
   tab.define_column("osd", TextTable::LEFT, TextTable::RIGHT);
@@ -2212,11 +2213,10 @@ void PGMap::print_osd_perf_stats(std::ostream *ss, const OSDMap& osd_map) const
   for (auto i = osd_stat.begin();
        i != osd_stat.end();
        ++i) {
-    const char* c = osd_map.crush->get_item_class(i->first);
     tab << i->first;
     tab << i->second.os_perf_stat.os_commit_latency;
     tab << i->second.os_perf_stat.os_apply_latency;
-    tab << c;
+    tab << i->second.device_class;
     tab << TextTable::endrow;
   }
   (*ss) << tab;
@@ -4110,11 +4110,11 @@ int process_pg_map_command(
   if (prefix == "osd perf") {
     if (f) {
       f->open_object_section("osdstats");
-      pg_map.dump_osd_perf_stats(f, osdmap);
+      pg_map.dump_osd_perf_stats(f);
       f->close_section();
       f->flush(ds);
     } else {
-      pg_map.print_osd_perf_stats(&ds, osdmap);
+      pg_map.print_osd_perf_stats(&ds);
     }
     odata->append(ds);
     return 0;
