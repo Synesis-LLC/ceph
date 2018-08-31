@@ -387,6 +387,9 @@ public:
   /// sync any uncommitted state to disk
   void sync_metadata();
 
+  bool is_bdev_healthy() const;
+  std::map<void*, std::pair<std::list<std::string>, std::shared_ptr<BlockDevice::stats_t>>> get_bdev_stats() const;
+
   int add_block_device(unsigned bdev, const string& path);
   bool bdev_support_label(unsigned id);
   uint64_t get_block_device_size(unsigned bdev);

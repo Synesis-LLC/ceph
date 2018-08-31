@@ -1535,6 +1535,7 @@ public:
   virtual void dump_perf_counters(Formatter *f) {}
 
   virtual string get_type() = 0;
+  virtual bool is_healthy() const { return true; }
 
   // mgmt
   virtual bool test_mount_in_use() = 0;
@@ -2021,6 +2022,8 @@ public:
   virtual int flush_journal() { return -EOPNOTSUPP; }
 
   virtual int dump_journal(ostream& out) { return -EOPNOTSUPP; }
+
+  virtual void dump_bdev_stats(Formatter *f) const {}
 
   virtual int snapshot(const string& name) { return -EOPNOTSUPP; }
 

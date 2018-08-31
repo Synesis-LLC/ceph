@@ -27,7 +27,7 @@ MEMPOOL_DEFINE_OBJECT_FACTORY(BlueFS::FileLock, bluefs_file_lock, bluefs);
 
 BlueFS::BlueFS(CephContext* cct)
   : cct(cct),
-    bdev(MAX_BDEV),
+    bdev(MAX_BDEV, nullptr),
     ioc(MAX_BDEV),
     block_all(MAX_BDEV),
     block_total(MAX_BDEV, 0)
@@ -127,6 +127,36 @@ void BlueFS::_update_logger_stats()
     logger->set(l_bluefs_slow_used_bytes,
 		block_total[BDEV_SLOW] - alloc[BDEV_SLOW]->get_free());
   }
+}
+
+bool BlueFS::is_bdev_healthy() const
+{
+  for (const auto it : bdev) {
+    if (it != nullptr && it->is_healthy() == false) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::map<void*, std::pair<std::list<std::string>, std::shared_ptr<BlockDevice::stats_t>>>
+BlueFS::get_bdev_stats() const
+{
+  std::map<void*, std::pair<std::list<std::string>, std::shared_ptr<BlockDevice::stats_t>>> r;
+
+  if (bdev[BDEV_WAL] != nullptr) {
+    BlockDevice::append_stats(r, "bluefs_wal", bdev[BDEV_WAL]);
+  }
+
+  if (bdev[BDEV_DB] != nullptr) {
+    BlockDevice::append_stats(r, "bluefs_db", bdev[BDEV_DB]);
+  }
+
+  if (bdev[BDEV_SLOW] != nullptr) {
+    BlockDevice::append_stats(r, "bluefs_slow", bdev[BDEV_SLOW]);
+  }
+
+  return std::move(r);
 }
 
 int BlueFS::add_block_device(unsigned id, const string& path)

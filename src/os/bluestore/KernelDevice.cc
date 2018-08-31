@@ -40,7 +40,6 @@ KernelDevice::KernelDevice(CephContext* cct, aio_callback_t cb, void *cbpriv)
     size(0), block_size(0),
     fs(NULL), aio(false), dio(false),
     debug_lock("KernelDevice::debug_lock"),
-    aio_queue(cct->_conf->bdev_aio_max_queue_depth),
     aio_callback(cb),
     aio_callback_priv(cbpriv),
     aio_stop(false),
@@ -148,6 +147,27 @@ int KernelDevice::open(const string& p)
       rotational = block_device_is_rotational(devname);
     }
   }
+
+  aio_op_timeout = cct->_conf->get_val<double>("bdev_aio_op_timeout");
+  if (aio_op_timeout == 0.0) {
+    if (rotational) {
+      aio_op_timeout = cct->_conf->get_val<double>("bdev_aio_op_timeout_hdd");
+    } else {
+      aio_op_timeout = cct->_conf->get_val<double>("bdev_aio_op_timeout_ssd");
+    }
+  }
+
+  aio_op_suicide_timeout = cct->_conf->get_val<double>("bdev_aio_op_suicide_timeout");
+  if (aio_op_suicide_timeout == 0.0) {
+    if (rotational) {
+      aio_op_suicide_timeout = cct->_conf->get_val<double>("bdev_aio_op_suicide_timeout_hdd");
+    } else {
+      aio_op_suicide_timeout = cct->_conf->get_val<double>("bdev_aio_op_suicide_timeout_ssd");
+    }
+  }
+
+  aio_reap_max = (int) cct->_conf->get_val<int64_t>("bdev_aio_reap_max");
+  aio_queue_max_iodepth = (int) cct->_conf->get_val<int64_t>("bdev_aio_max_queue_depth");
 
   r = _aio_start();
   if (r < 0) {
@@ -356,7 +376,7 @@ int KernelDevice::_aio_start()
 {
   if (aio) {
     dout(10) << __func__ << dendl;
-    int r = aio_queue.init();
+    int r = aio_queue.init(aio_queue_max_iodepth);
     if (r < 0) {
       if (r == -EAGAIN) {
 	derr << __func__ << " io_setup(2) failed with EAGAIN; "
@@ -384,14 +404,14 @@ void KernelDevice::_aio_stop()
 
 void KernelDevice::_aio_thread()
 {
+  assert(aio_reap_max > 0);
   dout(10) << __func__ << " start" << dendl;
   int inject_crash_count = 0;
   while (!aio_stop) {
     dout(40) << __func__ << " polling" << dendl;
-    int max = cct->_conf->bdev_aio_reap_max;
-    aio_t *aio[max];
+    aio_t *aio[aio_reap_max];
     int r = aio_queue.get_next_completed(cct->_conf->bdev_aio_poll_ms,
-					 aio, max);
+                                         aio, aio_reap_max);
     if (r < 0) {
       derr << __func__ << " got " << cpp_strerror(r) << dendl;
       assert(0 == "got unexpected error from io_getevents");
@@ -464,6 +484,36 @@ void KernelDevice::_aio_thread()
 	}
       }
     }
+
+    if (aio_op_timeout) {
+      aio_queue_t::aio_queue_state_t state = aio_queue.get_aio_state();
+      consume_aio_queue_state(state);
+      if (state.ops_in_flight > 0) {
+        double elapsed = state.elapsed_from_last_op_us;
+        elapsed /= 1000000.0;
+        if (elapsed > aio_op_timeout) {
+          healthy = false;
+          dout(0) << __func__ << " device marked UNHEALTHY, aio op timed out: "
+                  << elapsed << " seconds" << dendl;
+          if (aio_op_suicide_timeout && elapsed > aio_op_suicide_timeout) {
+            derr << __func__ << " device marked UNHEALTHY, aio op timed out: "
+                 << elapsed << " seconds, suicide" << dendl;
+            assert(0 == "bdev device UNHEALTHY, suicide");
+          }
+        } else {
+          if (!healthy) {
+            dout(0) << __func__ << " device marked HEALTHY " << dendl;
+          }
+          healthy = true;
+        }
+      } else {
+        if (!healthy) {
+          dout(0) << __func__ << " device marked HEALTHY " << dendl;
+        }
+        healthy = true;
+      }
+    }
+
     reap_ioc();
     if (cct->_conf->bdev_inject_crash) {
       ++inject_crash_count;
@@ -573,7 +623,7 @@ void KernelDevice::aio_submit(IOContext *ioc)
 
   void *priv = static_cast<void*>(ioc);
   int r, retries = 0;
-  r = aio_queue.submit_batch(ioc->running_aios.begin(), e, 
+  r = aio_queue.submit_batch(ioc->running_aios.begin(), e,
 			     ioc->num_running.load(), priv, &retries);
   
   if (retries)
@@ -871,5 +921,91 @@ int KernelDevice::invalidate_cache(uint64_t off, uint64_t len)
 	 << " error: " << cpp_strerror(r) << dendl;
   }
   return r;
+}
+
+void KernelDevice::consume_aio_queue_state(const aio_queue_t::aio_queue_state_t& state)
+{
+  std::lock_guard<std::mutex> lg(aio_queue_metrics_mutex);
+
+  if (aio_queue_mestrics.length_max < state.ops_in_flight) {
+    aio_queue_mestrics.length_max = state.ops_in_flight;
+  }
+  aio_queue_mestrics.length_sum += state.ops_in_flight;
+  aio_queue_mestrics.length_count++;
+
+  if (aio_queue_mestrics.last_completed_max_us < state.elapsed_from_last_op_us) {
+    aio_queue_mestrics.last_completed_max_us = state.elapsed_from_last_op_us;
+  }
+  aio_queue_mestrics.last_completed_sum_us += state.elapsed_from_last_op_us;
+  aio_queue_mestrics.last_completed_count++;
+}
+
+std::shared_ptr<BlockDevice::stats_t> KernelDevice::get_stats() const
+{
+  aio_queue_stats_t stats;
+  bool do_get = false;
+
+  {
+    std::lock_guard<std::mutex> lg(aio_queue_stats_mutex);
+    stats.timestamp = aio_queue_t::ops_clock_t::now();
+    stats.period = std::chrono::duration_cast<std::chrono::microseconds>(
+                stats.timestamp - aio_stats_last_get_timestamp);
+    if (stats.period.count() >= aio_stats_min_period_s) {
+      aio_stats_last_get_timestamp = stats.timestamp;
+      do_get = true;
+    }
+  }
+
+  if (do_get) {
+    aio_queue_mestrics_t metrics;
+    {
+      std::lock_guard<std::mutex> lg(aio_queue_metrics_mutex);
+      metrics = aio_queue_mestrics;
+      aio_queue_mestrics = aio_queue_mestrics_t();
+    }
+
+    stats.length_max = metrics.length_max;
+
+    if (metrics.length_count > 0) {
+      stats.length_mean =
+          (double)metrics.length_sum
+          / (double)metrics.length_count;
+    }
+
+    stats.last_completed_max_us = metrics.last_completed_max_us;
+
+    if (metrics.last_completed_count > 0) {
+      stats.last_completed_mean_us =
+          (double)metrics.last_completed_sum_us
+          / (double)metrics.last_completed_count;
+    }
+
+    {
+      std::lock_guard<std::mutex> lg(aio_queue_stats_mutex);
+      aio_queue_stats = stats;
+    }
+
+  } else {
+    std::lock_guard<std::mutex> lg(aio_queue_stats_mutex);
+    stats = aio_queue_stats;
+  }
+
+  return std::make_shared<aio_queue_stats_t>(stats);
+}
+
+void KernelDevice::aio_queue_stats_t::dump(Formatter *f) const
+{
+  f->dump_int("aio_op_queue_length_max", length_max);
+  f->dump_float("aio_op_queue_length_mean", length_mean);
+  f->dump_int("aio_op_queue_last_completed_max_us", last_completed_max_us);
+  f->dump_float("aio_op_queue_last_completed_mean_us", last_completed_mean_us);
+  f->dump_float("period", period.count());
+  std::stringstream ss;
+  auto sys_now = std::chrono::system_clock::now();
+  auto _now = aio_queue_t::ops_clock_t::now();
+  auto t1 = std::chrono::time_point_cast<std::chrono::system_clock::duration>(timestamp - _now + sys_now);
+  auto t2 = std::chrono::system_clock::to_time_t(t1);
+  ss << std::ctime(&t2);
+  f->dump_string("timestamp", ss.str());
 }
 
