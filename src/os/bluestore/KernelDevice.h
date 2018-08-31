@@ -97,8 +97,44 @@ class KernelDevice : public BlockDevice {
   void debug_aio_link(aio_t& aio);
   void debug_aio_unlink(aio_t& aio);
 
+  bool healthy = true;
+
+  double aio_op_timeout = 0.0;
+  double aio_op_suicide_timeout = 0.0;
+  int aio_reap_max = 0;
+  int aio_queue_max_iodepth = 0;
+
+  mutable std::mutex aio_queue_metrics_mutex;
+  mutable struct aio_queue_mestrics_t {
+    int64_t length_max = 0;
+    int64_t length_sum = 0;
+    size_t length_count = 0;
+    int64_t last_completed_max_us = 0;
+    int64_t last_completed_sum_us = 0;
+    size_t last_completed_count = 0;
+  } aio_queue_mestrics;
+  void consume_aio_queue_state(const aio_queue_t::aio_queue_state_t& state);
+
+  struct aio_queue_stats_t : public BlockDevice::stats_t {
+    int64_t length_max = 0;
+    double length_mean = 0.0;
+    int64_t last_completed_max_us = 0;
+    double last_completed_mean_us = 0.0;
+    aio_queue_t::ops_clock_t::time_point timestamp;
+    std::chrono::duration<double> period;
+    void dump(Formatter *f) const override;
+  };
+  double aio_stats_min_period_s = 5.0;
+  mutable std::mutex aio_queue_stats_mutex;
+  mutable aio_queue_t::ops_clock_t::time_point aio_stats_last_get_timestamp =
+      aio_queue_t::ops_clock_t::now();
+  mutable aio_queue_stats_t aio_queue_stats;
+
 public:
   KernelDevice(CephContext* cct, aio_callback_t cb, void *cbpriv, aio_callback_t d_cb, void *d_cbpriv);
+
+  bool is_healthy() const override { return healthy; }
+  std::shared_ptr<BlockDevice::stats_t> get_stats() const override;
 
   void aio_submit(IOContext *ioc) override;
   void discard_drain() override;

@@ -3209,6 +3209,30 @@ std::vector<Option> get_global_options() {
     .set_default(16)
     .set_description(""),
 
+    Option("bdev_aio_op_timeout", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
+    .set_default(0.0)
+    .set_description(""),
+
+    Option("bdev_aio_op_timeout_hdd", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
+    .set_default(15.0)
+    .set_description(""),
+
+    Option("bdev_aio_op_timeout_ssd", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
+    .set_default(5.0)
+    .set_description(""),
+
+    Option("bdev_aio_op_suicide_timeout", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
+    .set_default(0.0)
+    .set_description(""),
+
+    Option("bdev_aio_op_suicide_timeout_hdd", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
+    .set_default(60.0)
+    .set_description(""),
+
+    Option("bdev_aio_op_suicide_timeout_ssd", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
+    .set_default(20.0)
+    .set_description(""),
+
     Option("bdev_block_size", Option::TYPE_INT, Option::LEVEL_ADVANCED)
     .set_default(4_K)
     .set_description(""),

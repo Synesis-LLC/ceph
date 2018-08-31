@@ -13,6 +13,9 @@
 #include "include/buffer.h"
 #include "include/types.h"
 
+#include <chrono>
+#include <atomic>
+
 struct aio_t {
   struct iocb iocb;  // must be first element; see shenanigans in aio_queue_t
   void *priv;
@@ -53,20 +56,50 @@ typedef boost::intrusive::list<
     &aio_t::queue_item> > aio_list_t;
 
 struct aio_queue_t {
-  int max_iodepth;
   io_context_t ctx;
+  size_t max_iodepth = 0;
 
   typedef list<aio_t>::iterator aio_iter;
 
-  explicit aio_queue_t(unsigned max_iodepth)
-    : max_iodepth(max_iodepth),
-      ctx(0) {
-  }
+  explicit aio_queue_t() : ctx(0),
+    ops_in_flight(0)
+  {}
+
   ~aio_queue_t() {
     assert(ctx == 0);
   }
 
-  int init() {
+  typedef std::chrono::steady_clock ops_clock_t;
+  std::atomic<int64_t> ops_in_flight;
+  ops_clock_t::time_point last_op_timestamp = ops_clock_t::now();
+
+  struct aio_queue_state_t {
+    int64_t ops_in_flight;
+    int64_t elapsed_from_last_op_us;
+  };
+
+  aio_queue_state_t get_aio_state() {
+    aio_queue_state_t r;
+    // first syncronized load value of in_flight counter
+    // then read value of op timestamp
+    r.ops_in_flight = ops_in_flight.load(std::memory_order_relaxed);
+    if (r.ops_in_flight > 0) {
+      std::atomic_thread_fence(std::memory_order_acquire);
+      r.elapsed_from_last_op_us =
+          std::chrono::duration_cast<std::chrono::microseconds>(
+            ops_clock_t::now() - last_op_timestamp
+          ).count();
+    } else {
+      // no running ops (ops_in_flight <= 0)
+      r.ops_in_flight = 0;
+      r.elapsed_from_last_op_us = 0;
+    }
+    return r;
+  }
+
+  int init(size_t _max_iodepth) {
+    max_iodepth = _max_iodepth;
+    assert(max_iodepth > 0);
     assert(ctx == 0);
     int r = io_setup(max_iodepth, &ctx);
     if (r < 0) {

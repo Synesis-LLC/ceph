@@ -119,6 +119,13 @@ public:
     CephContext* cct, const std::string& path, aio_callback_t cb, void *cbpriv, aio_callback_t d_cb, void *d_cbpriv);
   virtual bool supported_bdev_label() { return true; }
   virtual bool is_rotational() { return rotational; }
+  virtual bool is_healthy() const = 0;
+
+  struct stats_t {
+    virtual ~stats_t() = default;
+    virtual void dump(Formatter *f) const {}
+  };
+  virtual std::shared_ptr<stats_t> get_stats() const { return std::make_shared<stats_t>(); }
 
   virtual void aio_submit(IOContext *ioc) = 0;
 
@@ -169,6 +176,19 @@ public:
   virtual int invalidate_cache(uint64_t off, uint64_t len) = 0;
   virtual int open(const std::string& path) = 0;
   virtual void close() = 0;
+
+  static void append_stats(std::map<void*, std::pair<std::list<std::string>, std::shared_ptr<BlockDevice::stats_t>>>& r,
+                           const std::string& name, const BlockDevice* bdev)
+  {
+    if (r.find((void*)bdev) == r.end()) {
+      auto stats = bdev->get_stats();
+      r.emplace((void*)bdev, std::make_pair(std::list<std::string>{name}, stats));
+    } else {
+      r[(void*)bdev].first.push_back(name);
+    }
+  }
 };
+
+
 
 #endif //CEPH_OS_BLUESTORE_BLOCKDEVICE_H

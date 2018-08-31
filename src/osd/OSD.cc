@@ -1375,6 +1375,15 @@ void OSDService::set_epochs(const epoch_t *_boot_epoch, const epoch_t *_up_epoch
   }
 }
 
+void OSDService::send_mark_me_down()
+{
+  monc->send_mon_message(new MOSDMarkMeDown(monc->get_fsid(),
+                                            osdmap->get_inst(whoami),
+                                            osdmap->get_epoch(),
+                                            true  // request ack
+                                            ));
+}
+
 bool OSDService::prepare_to_stop()
 {
   Mutex::Locker l(is_stopping_lock);
@@ -1385,11 +1394,9 @@ bool OSDService::prepare_to_stop()
   if (osdmap && osdmap->is_up(whoami)) {
     dout(0) << __func__ << " telling mon we are shutting down" << dendl;
     set_state(PREPARING_TO_STOP);
-    monc->send_mon_message(new MOSDMarkMeDown(monc->get_fsid(),
-					      osdmap->get_inst(whoami),
-					      osdmap->get_epoch(),
-					      true  // request ack
-					      ));
+
+    send_mark_me_down();
+
     utime_t now = ceph_clock_now();
     utime_t timeout;
     timeout.set_from_double(now + cct->_conf->osd_mon_shutdown_timeout);
@@ -2116,6 +2123,10 @@ bool OSD::asok_command(string admin_command, cmdmap_t& cmdmap, string format,
     f->close_section();
   } else if (admin_command == "flush_journal") {
     store->flush_journal();
+  } else if (admin_command == "dump_bdev_stats") {
+    store->dump_bdev_stats(f);
+  } else if (admin_command == "inject_mark_me_down") {
+    service.send_mark_me_down();
   } else if (admin_command == "dump_messengers") {
     f->open_object_section("messengers");
 
@@ -2839,9 +2850,17 @@ void OSD::final_init()
              asok_hook,
              "show some messangers internals");
   assert(r == 0);
+  r = admin_socket->register_command("dump_bdev_stats", "dump_bdev_stats",
+             asok_hook,
+             "show some bdev perf stats");
+  assert(r == 0);
   r = admin_socket->register_command("dump_primary_pgs", "dump_primary_pgs",
              asok_hook,
              "show some pgs internals");
+  assert(r == 0);
+  r = admin_socket->register_command("inject_mark_me_down", "inject_mark_me_down",
+             asok_hook,
+             "send mark-me-down msg to mon");
   assert(r == 0);
   r = admin_socket->register_command("dump_ops_in_flight",
 				     "dump_ops_in_flight " \
@@ -3432,6 +3451,8 @@ int OSD::shutdown()
   cct->get_admin_socket()->unregister_command("status");
   cct->get_admin_socket()->unregister_command("flush_journal");
   cct->get_admin_socket()->unregister_command("dump_messengers");
+  cct->get_admin_socket()->unregister_command("inject_mark_me_down");
+  cct->get_admin_socket()->unregister_command("dump_bdev_stats");
   cct->get_admin_socket()->unregister_command("dump_primary_pgs");
   cct->get_admin_socket()->unregister_command("dump_ops_in_flight");
   cct->get_admin_socket()->unregister_command("ops");
@@ -5098,8 +5119,13 @@ void OSD::handle_osd_ping(MOSDPing *m)
       }
 
       if (!cct->get_heartbeat_map()->is_healthy()) {
-	dout(10) << "internal heartbeat not healthy, dropping ping request" << dendl;
+        dout(0) << "internal heartbeat not healthy, dropping ping request" << dendl;
 	break;
+      }
+
+      if (store != nullptr && !store->is_healthy()) {
+        dout(0) << "internal store not healthy, dropping ping request" << dendl;
+        break;
       }
 
       Message *r = new MOSDPing(monc->get_fsid(),
@@ -5452,6 +5478,8 @@ void OSD::tick_without_osd_lock()
       report = true;
     } else if (service.need_fullness_update()) {
       report = true;
+    } else if (!store->is_healthy()) {
+      report = true;
     } else if ((int)outstanding_pg_stats.size() >=
 	       cct->_conf->osd_mon_report_max_in_flight) {
       dout(20) << __func__ << " have max " << outstanding_pg_stats
@@ -5477,6 +5505,10 @@ void OSD::tick_without_osd_lock()
       send_failures();
       if (osdmap->require_osd_release < CEPH_RELEASE_LUMINOUS) {
 	send_pg_stats(now);
+      }
+      if (!store->is_healthy() && osdmap->is_up(whoami)) {
+        dout(0) << __func__ << " store is unhealthy - send mark_me_down to mon" << dendl;
+        service.send_mark_me_down();
       }
     }
     map_lock.put_read();

@@ -3561,6 +3561,35 @@ BlueStore::~BlueStore()
   cache_shards.clear();
 }
 
+bool BlueStore::is_healthy() const {
+  if (bdev != nullptr && bdev->is_healthy() == false) {
+    return false;
+  }
+  if (bluefs != nullptr && bluefs->is_bdev_healthy() == false) {
+    return false;
+  }
+  return true;
+}
+
+void BlueStore::dump_bdev_stats(Formatter *f) const
+{
+  auto stats = bluefs->get_bdev_stats();
+  BlockDevice::append_stats(stats, "bluestore", bdev);
+
+  f->open_array_section("block_devices");
+  for (const auto item : stats) {
+    f->open_object_section("bdev");
+    f->open_array_section("names");
+    for (const auto name : item.second.first) {
+      f->dump_string("name", name);
+    }
+    f->close_section();
+    item.second.second->dump(f);
+    f->close_section();
+  }
+  f->close_section();
+}
+
 const char **BlueStore::get_tracked_conf_keys() const
 {
   static const char* KEYS[] = {

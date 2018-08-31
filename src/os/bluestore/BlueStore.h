@@ -2120,6 +2120,9 @@ public:
     return "bluestore";
   }
 
+  bool is_healthy() const override;
+  void dump_bdev_stats(Formatter *f) const override;
+
   bool needs_journal() override { return false; };
   bool wants_journal() override { return false; };
   bool allows_journal() override { return false; };

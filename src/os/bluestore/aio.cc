@@ -25,6 +25,14 @@ int aio_queue_t::submit(aio_t &aio, int *retries)
       }
     }
     assert(r == 1);
+
+    // first store timestamp, then synchronized increment in_flight counter
+    if (ops_in_flight.load(std::memory_order_relaxed) == 0) {
+      last_op_timestamp = ops_clock_t::now();
+      std::atomic_thread_fence(std::memory_order_release);
+    }
+    ops_in_flight.fetch_add(r, std::memory_order_relaxed);
+
     break;
   }
   return r;
@@ -34,13 +42,13 @@ int aio_queue_t::submit_batch(aio_iter begin, aio_iter end,
 			      uint16_t aios_size, void *priv, 
 			      int *retries)
 {
-  // 2^16 * 125us = ~8 seconds, so max sleep is ~16 seconds
-  int attempts = 16;
+  // 2^19 * 125us = ~64 seconds, so max sleep is ~128 seconds
+  int attempts = 19;
   int delay = 125;
 
   aio_iter cur = begin;
   struct iocb *piocb[aios_size];
-  int left = 0;
+  size_t left = 0;
   while (cur != end) {
     cur->priv = priv;
     *(piocb+left) = &cur->iocb;
@@ -60,9 +68,16 @@ int aio_queue_t::submit_batch(aio_iter begin, aio_iter end,
       return r;
     }
     assert(r > 0);
+
+    // first store timestamp, then synchronized increment in_flight counter
+    if (ops_in_flight.load(std::memory_order_relaxed) == 0) {
+      last_op_timestamp = ops_clock_t::now();
+    }
+    ops_in_flight.fetch_add(r, std::memory_order_acq_rel);
+
     done += r;
     left -= r;
-    attempts = 16;
+    attempts = 19;
     delay = 125;
   }
   return done;
@@ -81,9 +96,14 @@ int aio_queue_t::get_next_completed(int timeout_ms, aio_t **paio, int max)
     r = io_getevents(ctx, 1, max, event, &t);
   } while (r == -EINTR);
 
-  for (int i=0; i<r; ++i) {
-    paio[i] = (aio_t *)event[i].obj;
-    paio[i]->rval = event[i].res;
+  if (r > 0) {
+    ops_in_flight.fetch_sub(r, std::memory_order_relaxed);
+    last_op_timestamp = ops_clock_t::now();
+
+    for (int i=0; i<r; ++i) {
+      paio[i] = (aio_t *)event[i].obj;
+      paio[i]->rval = event[i].res;
+    }
   }
   return r;
 }

@@ -1180,6 +1180,7 @@ public:
     return state == PREPARING_TO_STOP;
   }
   bool prepare_to_stop();
+  void send_mark_me_down();
   void got_stop_ack();
 
 
