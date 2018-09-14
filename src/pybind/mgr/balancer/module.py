@@ -520,6 +520,9 @@ class Module(MgrModule):
 
         for device in devices:
             osd_id = device['id']
+            if osd_id not in osds:
+                self.log.error('No osd with id: %d' % osd_id)
+                continue
             osd = osds[osd_id]
             if 'class' not in device:
                 self.log.error('No osd class: ' + json.dumps(device))
