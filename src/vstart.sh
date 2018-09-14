@@ -451,6 +451,15 @@ prepare_conf() {
         mon_max_pg_per_osd = 100000
         mon_max_pool_pg_num = 262144
 
+        mon_osd_warn_op_age = 5
+        mon_osd_err_op_age_ratio = 6
+
+        osd_heartbeat_grace = 5
+
+        mon_osd_adjust_down_out_interval = false
+        mon_osd_adjust_heartbeat_grace = false
+
+
 [restapi]
         bind = 0.0.0.0:5000
         clientname = client.admin
@@ -527,6 +536,17 @@ $CMGRDEBUG
 $extra_conf
 [osd]
 $DAEMONOPTS
+        bdev_aio_op_timeout_ssd = 1
+        bdev_aio_op_timeout_hdd = 5
+        bdev_aio_op_suicide_timeout_ssd = 120
+        bdev_aio_op_suicide_timeout_hdd = 120
+        osd_heartbeat_interval = 1
+        osd_heartbeat_grace = 5
+        osd_op_thread_timeout = 10
+        threadpool_default_timeout = 10
+        osd_op_complaint_time = 5
+        osd_op_thread_suicide_timeout = 60
+
         memstore_device_bytes = 17179869184
         osd_op_num_shards = 8
         osd_op_num_threads_per_shard = 2
@@ -551,7 +571,7 @@ $DAEMONOPTS
         filestore wbthrottle btrfs inodes hard limit = 30
         osd copyfrom max chunk = 524288
         bluestore fsck on mount = true
-        bluestore block size = 5368709120
+        bluestore block size = 10485760000
         bluestore block create = true
 	bluestore block db path = $CEPH_DEV_DIR/osd\$id/block.db.file
         bluestore block db size = 67108864
