@@ -203,22 +203,19 @@ bool RGWLC::if_already_run_today(time_t& start_date)
   time_t begin_of_day;
   utime_t now = ceph_clock_now();
   localtime_r(&start_date, &bdt);
+  time_t one_day;
 
   if (cct->_conf->rgw_lc_debug_interval > 0) {
-    if (now - start_date < cct->_conf->rgw_lc_debug_interval)
-      return true;
-    else
-      return false;
+    one_day = cct->_conf->rgw_lc_debug_interval;
+  } else {
+    one_day = 24*60*60;
+    bdt.tm_hour = 0;
+    bdt.tm_min = 0;
+    bdt.tm_sec = 0;
   }
-
-  bdt.tm_hour = 0;
-  bdt.tm_min = 0;
-  bdt.tm_sec = 0;
   begin_of_day = mktime(&bdt);
-  if (now - begin_of_day < 24*60*60)
-    return true;
-  else
-    return false;
+
+  return (now - begin_of_day) < one_day;
 }
 
 int RGWLC::bucket_lc_prepare(int index)
@@ -337,6 +334,9 @@ int RGWLC::bucket_lc_process(string& shard_id)
   string bucket_tenant = result[0];
   string bucket_name = result[1];
   string bucket_id = result[2];
+
+  dout(20) << "RGWLC::bucket_lc_process(\"" << shard_id << "\")" << dendl;
+
   int ret = store->get_bucket_info(obj_ctx, bucket_tenant, bucket_name, bucket_info, NULL, &bucket_attrs);
   if (ret < 0) {
     ldout(cct, 0) << "LC:get_bucket_info failed" << bucket_name <<dendl;
@@ -662,16 +662,6 @@ int RGWLC::process(int index, int max_lock_secs)
       goto exit;
     }
 
-    if(!if_already_run_today(head.start_date)) {
-      head.start_date = now;
-      head.marker.clear();
-      ret = bucket_lc_prepare(index);
-      if (ret < 0) {
-      dout(0) << "RGWLC::process() failed to update lc object " << obj_names[index] << ret << dendl;
-      goto exit;
-      }
-    }
-
     ret = cls_rgw_lc_get_next_entry(store->lc_pool_ctx, obj_names[index], head.marker, entry);
     if (ret < 0) {
       dout(0) << "RGWLC::process() failed to get obj entry " << obj_names[index] << dendl;
@@ -679,7 +669,30 @@ int RGWLC::process(int index, int max_lock_secs)
     }
 
     if (entry.first.empty())
+    {
+      if (head.marker.empty())
+      {
+        // List empty, exit.
+        goto exit;
+      }
+      // List finished, reset head and status.
+      if(!if_already_run_today(head.start_date)) {
+        ret = bucket_lc_prepare(index);
+        if (ret < 0) {
+          dout(0) << "RGWLC::process() failed to update lc object " << obj_names[index] << ret << dendl;
+          goto exit;
+        }
+        head.start_date = now;
+        head.marker.clear();
+        ret = cls_rgw_lc_put_head(store->lc_pool_ctx, obj_names[index], head);
+        if (ret < 0) {
+          dout(0) << "RGWLC::process() failed to put head " << obj_names[index] << dendl;
+          goto exit;
+        }
+        continue;
+      }
       goto exit;
+    }
 
     entry.second = lc_processing;
     ret = cls_rgw_lc_set_entry(store->lc_pool_ctx, obj_names[index],  entry);
