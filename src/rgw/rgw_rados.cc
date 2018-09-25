@@ -8402,6 +8402,8 @@ int RGWRados::copy_obj(RGWObjectCtx& obj_ctx,
       const rgw_raw_obj& loc = miter.get_location().get_raw_obj(this);
       ref.ioctx.locator_set_key(loc.loc);
 
+      ldout(cct, 20) << "cls_refcount_get: oid=\"" << loc.oid << "\", tag=\"" << tag << "\"" << dendl;
+
       ret = ref.ioctx.operate(loc.oid, &op);
       if (ret < 0) {
         goto done_ret;
@@ -8454,6 +8456,7 @@ done_ret:
     for (riter = ref_objs.begin(); riter != ref_objs.end(); ++riter) {
       ObjectWriteOperation op;
       cls_refcount_put(op, tag, true);
+      ldout(cct, 20) << "cls_refcount_put: oid=\"" << riter->oid << "\", tag=\"" << tag << "\"" << dendl;
 
       ref.ioctx.locator_set_key(riter->loc);
 
@@ -8750,9 +8753,11 @@ int RGWRados::Object::complete_atomic_modification()
   if (!state->has_manifest || state->keep_tail)
     return 0;
 
+  string tag = (state->tail_tag.length() > 0 ? state->tail_tag.to_str() : state->obj_tag.to_str());
+
   if (store->ctx()->_conf->rgw_remove_object_always_bypass_gc) {
     std::list<librados::AioCompletion*> handles;
-    return rgw_remove_object_chunks(store, bucket_info, state->manifest,
+    return rgw_remove_object_chunks(store, bucket_info, state->manifest, tag,
                              store->ctx()->_conf->rgw_remove_object_max_concurrent_ios,
                              true, /* wait for delete operations to be completed */
                              handles);
@@ -8764,7 +8769,6 @@ int RGWRados::Object::complete_atomic_modification()
       return 0;
     }
 
-    string tag = (state->tail_tag.length() > 0 ? state->tail_tag.to_str() : state->obj_tag.to_str());
     return store->gc->send_chain(chain, tag, false);  // do it async
   }
 }
@@ -14316,6 +14320,33 @@ librados::Rados* RGWRados::get_rados_handle()
       return &rados[handle];
     }
   }
+}
+
+int RGWRados::raw_obj_refcount_put_aio(const rgw_raw_obj& obj, const std::string& tag, list<librados::AioCompletion *>& handles)
+{
+  rgw_rados_ref ref;
+  int ret = get_raw_obj_ref(obj, &ref);
+  if (ret < 0) {
+    lderr(cct) << "ERROR: failed to get obj ref with ret=" << ret << dendl;
+    return ret;
+  }
+
+  ObjectWriteOperation op;
+  cls_refcount_put(op, tag, true);
+  ldout(cct, 20) << "cls_refcount_put: oid=\"" << obj.oid << "\", tag=\"" << tag << "\"" << dendl;
+  ref.ioctx.locator_set_key(obj.loc);
+
+  AioCompletion *c = librados::Rados::aio_create_completion(NULL, NULL, NULL);
+  ret = ref.ioctx.aio_operate(ref.oid, c, &op);
+  if (ret < 0) {
+    lderr(cct) << "ERROR: AioOperate failed with ret=" << ret << dendl;
+    c->release();
+    return ret;
+  }
+
+  handles.push_back(c);
+
+  return 0;
 }
 
 int RGWRados::delete_raw_obj_aio(const rgw_raw_obj& obj, list<librados::AioCompletion *>& handles)

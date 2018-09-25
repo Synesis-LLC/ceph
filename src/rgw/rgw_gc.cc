@@ -195,7 +195,7 @@ int RGWGC::process(int index, int max_secs)
         rgw_raw_obj raw_obj = rgw_raw_obj(rgw_pool(obj.pool), obj.key.name, obj.loc);
 
         dout(5) << "gc::process: removing " << obj.pool << ":" << obj.key.name << dendl;
-        ret = store->delete_raw_obj_aio(raw_obj, handles);
+        ret = store->raw_obj_refcount_put_aio(raw_obj, info.tag, handles);
         if (ret < 0) {
           dout(0) << "failed to remove " << obj.pool << ":" << obj.key.name << "@" << obj.loc << dendl;
           remove_tag = false;
