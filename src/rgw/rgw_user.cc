@@ -92,6 +92,14 @@ int rgw_user_sync_all_stats(RGWRados *store, const rgw_user& user_id)
     return ret;
   }
 
+  if (store->ctx()->_conf->get_val<bool>("rgw_user_quota_sync_users_reset")) {
+    ret = store->cls_user_reset_stats(user_id.to_str());
+    if (ret < 0) {
+      ldout(store->ctx(), 0) << "ERROR: could not reset user stats: " << cpp_strerror(-ret) << dendl;
+      return ret;
+    }
+  }
+
   return 0;
 }
 

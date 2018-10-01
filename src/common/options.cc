@@ -5423,6 +5423,12 @@ std::vector<Option> get_rgw_options() {
     .set_long_description(
         "Whether stats for idle users be fully synced."),
 
+    Option("rgw_user_quota_sync_users_reset", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(false)
+    .set_description("Should reset users stats")
+    .set_long_description(
+       "Whether stats for users be fully reset."),
+
     Option("rgw_user_quota_sync_wait_time", Option::TYPE_INT, Option::LEVEL_ADVANCED)
     .set_default(1_day)
     .set_description("User quota full-sync wait time")

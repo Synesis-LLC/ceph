@@ -19,6 +19,7 @@
 #include "common/Thread.h"
 #include "common/Mutex.h"
 #include "common/RWLock.h"
+#include "common/errno.h"
 
 #include "rgw_common.h"
 #include "rgw_rados.h"
@@ -663,6 +664,14 @@ int RGWUserStatsCache::sync_user(const rgw_user& user)
   
   // check if enough time passed since last full sync
   /* FIXME: missing check? */
+
+  if (store->ctx()->_conf->get_val<bool>("rgw_user_quota_sync_users_reset")) {
+    ret = store->cls_user_reset_stats(user_str);
+    if (ret < 0) {
+      ldout(store->ctx(), 0) << "ERROR: could not reset user stats: " << cpp_strerror(-ret) << dendl;
+      return ret;
+    }
+  }
 
   ret = rgw_user_sync_all_stats(store, user);
   if (ret < 0) {
