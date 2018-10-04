@@ -12580,7 +12580,9 @@ int RGWRados::distribute(const string& key, bufferlist& bl)
   pick_control_oid(key, notify_oid);
 
   ldout(cct, 10) << "distributing notification oid=" << notify_oid << " bl.length()=" << bl.length() << dendl;
-  return control_pool_ctx.notify2(notify_oid, bl, cct->_conf->rgw_distribute_cache_timeout, NULL);
+
+  uint64_t timeout_ms = cct->_conf->rgw_distribute_cache_timeout * 1000;
+  return control_pool_ctx.notify2(notify_oid, bl, timeout_ms, NULL);
 }
 
 int RGWRados::pool_iterate_begin(const rgw_pool& pool, RGWPoolIterCtx& ctx)
