@@ -1034,6 +1034,11 @@ pair<ConnectionRef,ConnectionRef> OSDService::get_con_osd_hb(int peer, epoch_t f
   ret.first = osd->hb_back_client_messenger->get_connection(next_map->get_hb_back_inst(peer));
   if (next_map->get_hb_front_addr(peer) != entity_addr_t())
     ret.second = osd->hb_front_client_messenger->get_connection(next_map->get_hb_front_inst(peer));
+  else {
+      // Take attention if this warning will appears in logs
+      // More information in KP-2123
+      dout(0) << __func__ << " warning: empty heartbeat front addr, take attention!" << dendl;
+  }
   release_map(next_map);
   return ret;
 }
@@ -5273,7 +5278,8 @@ void OSD::heartbeat_check()
       if (p->second.last_rx_back == utime_t() ||
 	  p->second.last_rx_front == utime_t()) {
 	derr << "heartbeat_check: no reply from " << p->second.con_front->get_peer_addr().get_sockaddr()
-	     << " osd." << p->first << " ever on either front or back, first ping sent "
+         << " osd." << p->first << " ever on either front[" << ((p->second.last_rx_front == utime_t()) ? "unhealthy" : "healthy")
+         << "] or back[" << ((p->second.last_rx_back == utime_t()) ? "unhealthy" : "healthy") << "], first ping sent "
 	     << p->second.first_tx << " (cutoff " << cutoff << ")" << dendl;
 	// fail
 	failure_queue[p->first] = p->second.last_tx;
@@ -5366,7 +5372,7 @@ bool OSD::heartbeat_reset(Connection *con)
     if (p != heartbeat_peers.end() &&
 	(p->second.con_back == con ||
 	 p->second.con_front == con)) {
-      dout(10) << "heartbeat_reset failed hb con " << con << " for osd." << p->second.peer
+      dout(2) << "heartbeat_reset failed hb con " << con << " for osd." << p->second.peer
 	       << ", reopening" << dendl;
       if (con != p->second.con_back) {
 	p->second.con_back->mark_down();
@@ -5385,12 +5391,12 @@ bool OSD::heartbeat_reset(Connection *con)
 	  p->second.con_front->set_priv(s->get());
 	}
       } else {
-	dout(10) << "heartbeat_reset failed hb con " << con << " for osd." << p->second.peer
+    dout(2) << "heartbeat_reset failed hb con " << con << " for osd." << p->second.peer
 		 << ", raced with osdmap update, closing out peer" << dendl;
 	heartbeat_peers.erase(p);
       }
     } else {
-      dout(10) << "heartbeat_reset closing (old) failed hb con " << con << dendl;
+      dout(2) << "heartbeat_reset closing (old) failed hb con " << con << dendl;
     }
     heartbeat_lock.Unlock();
     s->put();

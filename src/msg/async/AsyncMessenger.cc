@@ -33,7 +33,7 @@
 #undef dout_prefix
 #define dout_prefix _prefix(_dout, this)
 static ostream& _prefix(std::ostream *_dout, AsyncMessenger *m) {
-  return *_dout << "-- " << m->get_myaddr() << " ";
+  return *_dout << "-- addr(" << m->get_myaddr() << ") AsyncMessenger.";
 }
 
 static ostream& _prefix(std::ostream *_dout, Processor *p) {
@@ -513,7 +513,7 @@ AsyncConnectionRef AsyncMessenger::create_connect(const entity_addr_t& addr, int
   assert(lock.is_locked());
   assert(addr != my_inst.addr);
 
-  ldout(cct, 10) << __func__ << " " << addr
+  ldout(cct, 2) << __func__ << " " << addr
       << ", creating connection and registering" << dendl;
 
   // create connection
@@ -540,7 +540,7 @@ ConnectionRef AsyncMessenger::get_connection(const entity_inst_t& dest)
     ldout(cct, 10) << __func__ << " " << dest << " existing " << conn << dendl;
   } else {
     conn = create_connect(dest.addr, dest.name.type());
-    ldout(cct, 10) << __func__ << " " << dest << " new " << conn << dendl;
+    ldout(cct, 2) << __func__ << " " << dest << " new " << conn << dendl;
   }
 
   return conn;
@@ -650,7 +650,8 @@ void AsyncMessenger::submit_message(Message *m, AsyncConnectionRef con,
         << ceph_entity_type_name(dest_type) << ", no session, dropping." << dendl;
     m->put();
   } else {
-    ldout(cct,20) << __func__ << " " << *m << " remote, " << dest_addr << ", new connection." << dendl;
+    ldout(cct, 2) << __func__ << " " << *m << " remote, " << dest_addr << ", new connection." << dendl;
+    //ldout(cct,20) << __func__ << " " << *m << " remote, " << dest_addr << ", new connection." << dendl;
     con = create_connect(dest_addr, dest_type);
     con->send_message(m);
   }
@@ -678,6 +679,35 @@ void AsyncMessenger::set_addr(const entity_addr_t &addr)
   t.set_nonce(nonce);
   set_myaddr(t);
   _init_local_connection();
+}
+
+AsyncConnectionRef AsyncMessenger::_lookup_conn(const entity_addr_t& addr) {
+  assert(lock.is_locked());
+
+  AsyncConnectionRef existing = NULL;
+  auto it = conns.find(addr);
+  if (it != conns.end()) {
+    existing = it->second;
+
+    // lazy delete, see "deleted_conns"
+    Mutex::Locker l(deleted_lock);
+    bool erased_from_deleted = deleted_conns.erase(existing);
+    bool existing_and_stopped = existing->is_stopped();
+    if (erased_from_deleted || existing_and_stopped) {
+
+      if (!erased_from_deleted && existing_and_stopped) {
+        // Take attention if this warning will appears in logs
+        // More information in KP-2299
+        ldout(cct, 0) << __func__ << " warning: stopped and not completely deleted connection=" << existing.get() << " addr=" << addr << dendl;
+      }
+
+      existing->get_perf_counter()->dec(l_msgr_active_connections);
+      conns.erase(it);
+      existing = NULL;
+    }
+  }
+
+  return existing;
 }
 
 void AsyncMessenger::shutdown_connections(bool queue_reset)

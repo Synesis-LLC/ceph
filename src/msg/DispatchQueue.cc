@@ -38,7 +38,9 @@ double DispatchQueue::get_max_age(utime_t now) const {
 
 uint64_t DispatchQueue::pre_dispatch(Message *m)
 {
-  ldout(cct,1) << "<== " << m->get_source_inst()
+  // hide annoying ping and ping_reply messages
+  // ldout(cct, 1) << "<== " << m->get_source_inst()
+  ldout(cct, 5) << "<== " << m->get_source_inst()
 	       << " " << m->get_seq()
 	       << " ==== " << *m
 	       << " ==== " << m->get_payload().length()

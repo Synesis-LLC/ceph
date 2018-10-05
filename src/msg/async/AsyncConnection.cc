@@ -33,12 +33,13 @@
 #define dout_prefix _conn_prefix(_dout)
 ostream& AsyncConnection::_conn_prefix(std::ostream *_dout) {
   return *_dout << "-- " << async_msgr->get_myinst().addr << " >> " << peer_addr << " conn(" << this
-                << " :" << port
+                << " sd=" << (cs ? cs.fd() : -1)
+                << " port=" << port
                 << " s=" << get_state_name(state)
                 << " pgs=" << peer_global_seq
                 << " cs=" << connect_seq
                 << " l=" << policy.lossy
-                << ").";
+                << ") AsyncConnection.";
 }
 
 // Notes:
@@ -142,10 +143,14 @@ AsyncConnection::AsyncConnection(CephContext *cct, AsyncMessenger *m, DispatchQu
   recv_buf = new char[2*recv_max_prefetch];
   state_buffer = new char[4096];
   logger->inc(l_msgr_created_connections);
+
+  ldout(msgr->cct, 2) << __func__ << " init" << dendl;
 }
 
 AsyncConnection::~AsyncConnection()
 {
+  ldout(msgr->cct, 2) << __func__ << " destroy" << dendl;
+
   assert(out_q.empty());
   assert(sent.empty());
   delete authorizer;
@@ -1902,7 +1907,8 @@ ssize_t AsyncConnection::handle_connect_msg(ceph_msg_connect &connect, bufferlis
 
 void AsyncConnection::_connect()
 {
-  ldout(async_msgr->cct, 10) << __func__ << " csq=" << connect_seq << dendl;
+  ldout(async_msgr->cct, 2) << __func__ << " pear_addr: " << peer_addr << " csq=" << connect_seq << dendl;
+  // ldout(async_msgr->cct, 10) << __func__ << " csq=" << connect_seq << dendl;
 
   state = STATE_CONNECTING;
   // rescheduler connection in order to avoid lock dep
@@ -1912,7 +1918,8 @@ void AsyncConnection::_connect()
 
 void AsyncConnection::accept(ConnectedSocket socket, entity_addr_t &addr)
 {
-  ldout(async_msgr->cct, 10) << __func__ << " sd=" << socket.fd() << dendl;
+  ldout(async_msgr->cct, 2) << __func__ << " addr: " << addr << " sd=" << socket.fd() << dendl;
+  //ldout(async_msgr->cct, 10) << __func__ << " sd=" << socket.fd() << dendl;
   assert(socket.fd() >= 0);
 
   std::lock_guard<std::mutex> l(lock);
@@ -1926,8 +1933,10 @@ void AsyncConnection::accept(ConnectedSocket socket, entity_addr_t &addr)
 int AsyncConnection::send_message(Message *m)
 {
   FUNCTRACE();
-  lgeneric_subdout(async_msgr->cct, ms,
-		   1) << "-- " << async_msgr->get_myaddr() << " --> "
+  // hide annoying ping and ping_reply messages
+  // lgeneric_subdout(async_msgr->cct, ms, 1)
+  lgeneric_subdout(async_msgr->cct, ms, 5)
+              << "-- " << async_msgr->get_myaddr() << " --> "
 		      << get_peer_addr() << " -- "
 		      << *m << " -- " << m << " con "
 		      << m->get_connection().get()
@@ -2074,7 +2083,7 @@ int AsyncConnection::randomize_out_seq()
 void AsyncConnection::fault()
 {
   if (state == STATE_CLOSED || state == STATE_NONE) {
-    ldout(async_msgr->cct, 10) << __func__ << " connection is already closed" << dendl;
+    ldout(async_msgr->cct, 2) << __func__ << " connection is already closed" << dendl;
     return ;
   }
 
@@ -2102,7 +2111,7 @@ void AsyncConnection::fault()
   outcoming_bl.clear();
   if (!once_ready && !is_queued() &&
       state >=STATE_ACCEPTING && state <= STATE_ACCEPTING_WAIT_CONNECT_MSG_AUTH) {
-    ldout(async_msgr->cct, 10) << __func__ << " with nothing to send and in the half "
+    ldout(async_msgr->cct, 2) << __func__ << " with nothing to send and in the half "
                               << " accept state just closed" << dendl;
     write_lock.unlock();
     _stop();
@@ -2111,7 +2120,7 @@ void AsyncConnection::fault()
   }
   reset_recv_state();
   if (policy.standby && !is_queued() && state != STATE_WAIT) {
-    ldout(async_msgr->cct, 10) << __func__ << " with nothing to send, going to standby" << dendl;
+    ldout(async_msgr->cct, 2) << __func__ << " with nothing to send, going to standby" << dendl;
     state = STATE_STANDBY;
     write_lock.unlock();
     return;
@@ -2143,7 +2152,7 @@ void AsyncConnection::fault()
     }
 
     state = STATE_CONNECTING;
-    ldout(async_msgr->cct, 10) << __func__ << " waiting " << backoff << dendl;
+    ldout(async_msgr->cct, 2) << __func__ << " waiting " << backoff << dendl;
     // woke up again;
     register_time_events.insert(center->create_time_event(
             backoff.to_nsec()/1000, wakeup_handler));
