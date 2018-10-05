@@ -247,7 +247,7 @@ static void usage_exit()
 template <typename I, typename T>
 static int rados_sistrtoll(I &i, T *val) {
   std::string err;
-  *val = strict_iecstrtoll(i->second.c_str(), &err);
+  *val = strict_si_cast<T>(i->second.c_str(), &err);
   if (err != "") {
     cerr << "Invalid value for " << i->first << ": " << err << std::endl;
     return -EINVAL;
@@ -256,6 +256,17 @@ static int rados_sistrtoll(I &i, T *val) {
   }
 }
 
+template <typename I, typename T>
+static int rados_iecstrtoll(I &i, T *val) {
+  std::string err;
+  *val = strict_iec_cast<T>(i->second.c_str(), &err);
+  if (err != "") {
+    cerr << "Invalid value for " << i->first << ": " << err << std::endl;
+    return -EINVAL;
+  } else {
+    return 0;
+  }
+}
 
 static int dump_data(std::string const &filename, bufferlist const &data)
 {
@@ -2032,14 +2043,14 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
   }
   i = opts.find("block-size");
   if (i != opts.end()) {
-    if (rados_sistrtoll(i, &op_size)) {
+    if (rados_iecstrtoll(i, &op_size)) {
       return -EINVAL;
     }
     block_size_specified = true;
   }
   i = opts.find("object-size");
   if (i != opts.end()) {
-    if (rados_sistrtoll(i, &object_size)) {
+    if (rados_iecstrtoll(i, &object_size)) {
       return -EINVAL;
     }
     block_size_specified = true;
@@ -2052,7 +2063,7 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
   }
   i = opts.find("offset");
   if (i != opts.end()) {
-    if (rados_sistrtoll(i, &obj_offset)) {
+    if (rados_iecstrtoll(i, &obj_offset)) {
       return -EINVAL;
     }
   }
@@ -2068,13 +2079,13 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
   }
   i = opts.find("min-object-size");
   if (i != opts.end()) {
-    if (rados_sistrtoll(i, &min_obj_len)) {
+    if (rados_iecstrtoll(i, &min_obj_len)) {
       return -EINVAL;
     }
   }
   i = opts.find("max-object-size");
   if (i != opts.end()) {
-    if (rados_sistrtoll(i, &max_obj_len)) {
+    if (rados_iecstrtoll(i, &max_obj_len)) {
       return -EINVAL;
     }
   }

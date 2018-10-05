@@ -135,7 +135,7 @@ template<typename T>
 T strict_iec_cast(const boost::string_view str, std::string *err)
 {
   if (str.empty()) {
-    *err = "strict_iecstrtoll: value not specified";
+    *err = "strict_iec_cast: value not specified";
     return 0;
   }
   // get a view of the unit and of the value
@@ -151,12 +151,12 @@ T strict_iec_cast(const boost::string_view str, std::string *err)
     // i.e. K, M, ... and Ki, Mi, ...
     if (unit.back() == 'i') {
       if (unit.front() == 'B') {
-        *err = "strict_iecstrtoll: illegal prefix \"Bi\"";
+        *err = "strict_iec_cast: illegal prefix \"Bi\"";
         return 0;
       }
     }
     if (unit.length() > 2) {
-      *err = "strict_iecstrtoll: illegal prefix (length > 2)";
+      *err = "strict_iec_cast: illegal prefix (length > 2)";
       return 0;
     }
     switch(unit.front()) {
@@ -181,30 +181,30 @@ T strict_iec_cast(const boost::string_view str, std::string *err)
       case 'B':
         break;
       default:
-        *err = "strict_iecstrtoll: unit prefix not recognized";
+        *err = "strict_iec_cast: unit prefix not recognized";
         return 0;
     }
   }
 
   long long ll = strict_strtoll(n, 10, err);
   if (ll < 0 && !std::numeric_limits<T>::is_signed) {
-    *err = "strict_iecstrtoll: value should not be negative";
+    *err = "strict_iec_cast: value should not be negative";
     return 0;
   }
   if (static_cast<unsigned>(m) >= sizeof(T) * CHAR_BIT) {
-    *err = ("strict_iecstrtoll: the IEC prefix is too large for the designated "
+    *err = ("strict_iec_cast: the IEC prefix is too large for the designated "
         "type");
     return 0;
   }
   using promoted_t = typename std::common_type<decltype(ll), T>::type;
   if (static_cast<promoted_t>(ll) <
       static_cast<promoted_t>(std::numeric_limits<T>::min()) >> m) {
-    *err = "strict_iecstrtoll: value seems to be too small";
+    *err = "strict_iec_cast: value seems to be too small";
     return 0;
   }
   if (static_cast<promoted_t>(ll) >
       static_cast<promoted_t>(std::numeric_limits<T>::max()) >> m) {
-    *err = "strict_iecstrtoll: value seems to be too large";
+    *err = "strict_iec_cast: value seems to be too large";
     return 0;
   }
   return (ll << m);
@@ -215,16 +215,6 @@ template long strict_iec_cast<long>(const boost::string_view str, std::string *e
 template long long strict_iec_cast<long long>(const boost::string_view str, std::string *err);
 template uint64_t strict_iec_cast<uint64_t>(const boost::string_view str, std::string *err);
 template uint32_t strict_iec_cast<uint32_t>(const boost::string_view str, std::string *err);
-
-uint64_t strict_iecstrtoll(const boost::string_view str, std::string *err)
-{
-  return strict_iec_cast<uint64_t>(str, err);
-}
-
-uint64_t strict_iecstrtoll(const char *str, std::string *err)
-{
-  return strict_iec_cast<uint64_t>(boost::string_view(str), err);
-}
 
 template<typename T>
 T strict_iec_cast(const char *str, std::string *err)
@@ -242,7 +232,7 @@ template<typename T>
 T strict_si_cast(const boost::string_view str, std::string *err)
 {
   if (str.empty()) {
-    *err = "strict_sistrtoll: value not specified";
+    *err = "strict_si_cast: value not specified";
     return 0;
   }
   boost::string_view n = str;
@@ -273,18 +263,18 @@ T strict_si_cast(const boost::string_view str, std::string *err)
 
   long long ll = strict_strtoll(n, 10, err);
   if (ll < 0 && !std::numeric_limits<T>::is_signed) {
-    *err = "strict_sistrtoll: value should not be negative";
+    *err = "strict_si_cast: value should not be negative";
     return 0;
   }
   using promoted_t = typename std::common_type<decltype(ll), T>::type;
   if (static_cast<promoted_t>(ll) <
       static_cast<promoted_t>(std::numeric_limits<T>::min()) / pow (10, m)) {
-    *err = "strict_sistrtoll: value seems to be too small";
+    *err = "strict_si_cast: value seems to be too small";
     return 0;
   }
   if (static_cast<promoted_t>(ll) >
       static_cast<promoted_t>(std::numeric_limits<T>::max()) / pow (10, m)) {
-    *err = "strict_sistrtoll: value seems to be too large";
+    *err = "strict_si_cast: value seems to be too large";
     return 0;
   }
   return (ll * pow (10,  m));
@@ -295,16 +285,6 @@ template long strict_si_cast<long>(const boost::string_view str, std::string *er
 template long long strict_si_cast<long long>(const boost::string_view str, std::string *err);
 template uint64_t strict_si_cast<uint64_t>(const boost::string_view str, std::string *err);
 template uint32_t strict_si_cast<uint32_t>(const boost::string_view str, std::string *err);
-
-uint64_t strict_sistrtoll(const boost::string_view str, std::string *err)
-{
-  return strict_si_cast<uint64_t>(str, err);
-}
-
-uint64_t strict_sistrtoll(const char *str, std::string *err)
-{
-  return strict_si_cast<uint64_t>(str, err);
-}
 
 template<typename T>
 T strict_si_cast(const char *str, std::string *err)

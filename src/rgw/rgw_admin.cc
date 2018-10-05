@@ -2760,14 +2760,14 @@ int main(int argc, const char **argv)
         return EINVAL;
       }
     } else if (ceph_argparse_witharg(args, i, &val, "--max-size", (char*)NULL)) {
-      max_size = strict_iecstrtoll(val.c_str(), &err);
+      max_size = strict_iec_cast<decltype(max_size)>(val.c_str(), &err);
       if (!err.empty()) {
         cerr << "ERROR: failed to parse max size: " << err << std::endl;
         return EINVAL;
       }
       have_max_size = true;
     } else if (ceph_argparse_witharg(args, i, &val, "--max-objects", (char*)NULL)) {
-      max_objects = (int64_t)strict_strtoll(val.c_str(), 10, &err);
+      max_objects = strict_si_cast<decltype(max_objects)>(val.c_str(), &err);
       if (!err.empty()) {
         cerr << "ERROR: failed to parse max objects: " << err << std::endl;
         return EINVAL;

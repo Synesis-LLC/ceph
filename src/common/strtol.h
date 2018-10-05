@@ -28,12 +28,8 @@ double strict_strtod(const char *str, std::string *err);
 
 float strict_strtof(const char *str, std::string *err);
 
-uint64_t strict_iecstrtoll(const char *str, std::string *err);
-
 template<typename T>
 T strict_iec_cast(const char *str, std::string *err);
-
-uint64_t strict_sistrtoll(const char *str, std::string *err);
 
 template<typename T>
 T strict_si_cast(const char *str, std::string *err);

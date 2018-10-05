@@ -146,7 +146,7 @@ TEST(StrToL, Error1) {
 static void test_strict_iecstrtoll(const char *str)
 {
   std::string err;
-  strict_iecstrtoll(str, &err);
+  strict_iec_cast<uint64_t>(str, &err);
   ASSERT_EQ(err, "");
 }
 
@@ -157,7 +157,7 @@ static void test_strict_iecstrtoll_units(const std::string& foo,
   s.append(u);
   const char *str = s.c_str();
   std::string err;
-  uint64_t r = strict_iecstrtoll(str, &err);
+  uint64_t r = strict_iec_cast<decltype(r)>(str, &err);
   ASSERT_EQ(err, "");
 
   str = foo.c_str();
@@ -186,7 +186,7 @@ TEST(IECStrToLL, WithUnits) {
 
   for (std::map<std::string,int>::iterator p = units.begin();
        p != units.end(); ++p) {
-    // the upper bound of uint64_t is 2^64 = 4E
+    // the upper bound of uint64_t is 2^64-1 = 16E(iec)-1
     test_strict_iecstrtoll_units("4", p->first, p->second);
     test_strict_iecstrtoll_units("1", p->first, p->second);
     test_strict_iecstrtoll_units("0", p->first, p->second);
@@ -202,7 +202,7 @@ TEST(IECStrToLL, WithoutUnits) {
 static void test_strict_iecstrtoll_err(const char *str)
 {
   std::string err;
-  strict_iecstrtoll(str, &err);
+  strict_iec_cast<uint64_t>(str, &err);
   ASSERT_NE(err, "");
 }
 
@@ -233,12 +233,10 @@ TEST(IECStrToLL, Error) {
   test_strict_iecstrtoll_err("20ti");
   test_strict_iecstrtoll_err("100pi");
   test_strict_iecstrtoll_err("1000ei");
-  // the upper bound of uint64_t is 2^64 = 4E, so 1024E overflows
-  test_strict_iecstrtoll_err("1024E"); // overflows after adding the suffix
+  // the upper bound of int64_t is 2^64-1 = 16E(iec)-1, so 16E(iec) overflows
+  test_strict_iecstrtoll_err("16E");
 }
 
-// since strict_iecstrtoll is an alias of strict_iec_cast<uint64_t>(), quite a few
-// of cases are covered by existing test cases of strict_iecstrtoll already.
 TEST(StrictIECCast, Error) {
   {
     std::string err;
@@ -273,11 +271,10 @@ TEST(StrictIECCast, Error) {
   }
 }
 
-
 static void test_strict_sistrtoll(const char *str)
 {
   std::string err;
-  strict_sistrtoll(str, &err);
+  strict_si_cast<uint64_t>(str, &err);
   ASSERT_EQ(err, "");
 }
 
@@ -288,14 +285,14 @@ static void test_strict_sistrtoll_units(const std::string& foo,
   s.append(u);
   const char *str = s.c_str();
   std::string err;
-  uint64_t r = strict_sistrtoll(str, &err);
+  uint64_t r = strict_si_cast<decltype(r)>(str, &err);
   ASSERT_EQ(err, "");
 
   str = foo.c_str();
   std::string err2;
   long long tmp = strict_strtoll(str, 10, &err2);
   ASSERT_EQ(err2, "");
-  tmp = (tmp *  m);
+  tmp = (tmp * m);
   ASSERT_EQ(tmp, (long long)r);
 }
 
@@ -310,7 +307,7 @@ TEST(SIStrToLL, WithUnits) {
 
   for (std::map<std::string,long long>::iterator p = units.begin();
        p != units.end(); ++p) {
-    // the upper bound of uint64_t is 2^64 = 4E
+    // the upper bound of uint64_t is 2^64-1 ~= 18E(si)
     test_strict_sistrtoll_units("4", p->first, p->second);
     test_strict_sistrtoll_units("1", p->first, p->second);
     test_strict_sistrtoll_units("0", p->first, p->second);
@@ -326,7 +323,7 @@ TEST(SIStrToLL, WithoutUnits) {
 static void test_strict_sistrtoll_err(const char *str)
 {
   std::string err;
-  strict_sistrtoll(str, &err);
+  strict_si_cast<uint64_t>(str, &err);
   ASSERT_NE(err, "");
 }
 
@@ -358,12 +355,10 @@ TEST(SIStrToLL, Error) {
   test_strict_sistrtoll_err("100pi");
   test_strict_sistrtoll_err("1000ei");
   test_strict_sistrtoll_err("1B");
-  // the upper bound of uint64_t is 2^64 = 4E, so 1024E overflows
-  test_strict_sistrtoll_err("1024E"); // overflows after adding the suffix
+  // the upper bound of uint64_t is 2^64-1 ~= 18E(si), so 19E(si) overflows
+  test_strict_sistrtoll_err("19E");
 }
 
-// since strict_sistrtoll is an alias of strict_si_cast<uint64_t>(), quite a few
-// of cases are covered by existing test cases of strict_sistrtoll already.
 TEST(StrictSICast, Error) {
   {
     std::string err;
