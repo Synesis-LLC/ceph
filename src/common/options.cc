@@ -924,6 +924,20 @@ std::vector<Option> get_global_options() {
     .set_default(10)
     .set_description(""),
 
+    Option("mon_osd_markup_interval", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
+    .set_default(60.0)
+    .set_description("Interval between number of osds can be marked up, seconds.")
+    .add_see_also("mon_osd_markup_burst"),
+
+    Option("mon_osd_markup_burst", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
+    .set_default(0)
+    .set_description("Number of osds can be marked up during interval. 0 - no limits.")
+    .add_see_also("mon_osd_markup_interval"),
+
+    Option("mon_osd_markup_max_delay", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
+    .set_default(0.0)
+    .set_description("Max delay before mon can mark osd up, seconds. 0.0 - no delay."),
+
     Option("mon_osd_laggy_halflife", Option::TYPE_INT, Option::LEVEL_ADVANCED)
     .set_default(1_hr)
     .set_description(""),

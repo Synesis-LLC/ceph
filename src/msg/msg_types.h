@@ -350,7 +350,19 @@ struct entity_addr_t {
       return true;
     return false;
   }
-  
+
+  bool _is_host_less(const entity_addr_t &o) const {
+    if (u.sa.sa_family != o.u.sa.sa_family)
+      return false;
+    if (u.sa.sa_family == AF_INET)
+      return u.sin.sin_addr.s_addr < o.u.sin.sin_addr.s_addr;
+    if (u.sa.sa_family == AF_INET6)
+      return memcmp(u.sin6.sin6_addr.s6_addr,
+                    o.u.sin6.sin6_addr.s6_addr,
+                    sizeof(u.sin6.sin6_addr.s6_addr)) < 0;
+    return false;
+  }
+
   bool is_same_host(const entity_addr_t &o) const {
     if (u.sa.sa_family != o.u.sa.sa_family)
       return false;
@@ -473,6 +485,12 @@ inline bool operator<(const entity_addr_t& a, const entity_addr_t& b) { return m
 inline bool operator<=(const entity_addr_t& a, const entity_addr_t& b) { return memcmp(&a, &b, sizeof(a)) <= 0; }
 inline bool operator>(const entity_addr_t& a, const entity_addr_t& b) { return memcmp(&a, &b, sizeof(a)) > 0; }
 inline bool operator>=(const entity_addr_t& a, const entity_addr_t& b) { return memcmp(&a, &b, sizeof(a)) >= 0; }
+
+struct comapre_host {
+    bool operator() (const entity_addr_t& a, const entity_addr_t& b) const {
+        return a._is_host_less(b);
+    }
+};
 
 namespace std {
   template<> struct hash< entity_addr_t >

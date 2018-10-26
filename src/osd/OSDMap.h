@@ -102,9 +102,13 @@ struct osd_xinfo_t {
   __u32 laggy_interval;    ///< average interval between being marked laggy and recovering
   uint64_t features;       ///< features supported by this osd we should know about
   __u32 old_weight;        ///< weight prior to being auto marked out
+  utime_t boot_started_stamp; ///< timestamp when mon got first boot from this osd
+  float boot_delay;        ///< delay before mon can mark osd up, seconds
 
   osd_xinfo_t() : laggy_probability(0), laggy_interval(0),
-                  features(0), old_weight(0) {}
+                  features(0), old_weight(0),
+                  boot_delay(0)
+                {}
 
   void dump(Formatter *f) const;
   void encode(bufferlist& bl) const;
@@ -788,6 +792,10 @@ public:
 
   bool is_up(int osd) const {
     return exists(osd) && (osd_state[osd] & CEPH_OSD_UP);
+  }
+
+  bool is_wait_up(int osd) const {
+    return exists(osd) && (osd_state[osd] & CEPH_OSD_WAIT_UP);
   }
 
   bool has_been_up_since(int osd, epoch_t epoch) const {

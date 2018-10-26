@@ -2549,7 +2549,8 @@ bool OSDMonitor::prepare_boot(MonOpRequestRef op)
 {
   op->mark_osdmon_event(__func__);
   MOSDBoot *m = static_cast<MOSDBoot*>(op->get_req());
-  dout(7) << __func__ << " from " << m->get_orig_source_inst() << " sb " << m->sb
+  dout(7) << __func__ << " msg " << (void*)m
+          << " from " << m->get_orig_source_inst() << " sb " << m->sb
 	  << " cluster_addr " << m->cluster_addr
 	  << " hb_back_addr " << m->hb_back_addr
 	  << " hb_front_addr " << m->hb_front_addr
@@ -2560,7 +2561,7 @@ bool OSDMonitor::prepare_boot(MonOpRequestRef op)
 
   // does this osd exist?
   if (from >= osdmap.get_max_osd()) {
-    dout(1) << "boot from osd." << from << " >= max_osd "
+    dout(7) << __func__ << " boot from osd." << from << " >= max_osd "
 	    << osdmap.get_max_osd() << dendl;
     return false;
   }
@@ -2568,6 +2569,41 @@ bool OSDMonitor::prepare_boot(MonOpRequestRef op)
   int oldstate = osdmap.exists(from) ? osdmap.get_state(from) : CEPH_OSD_NEW;
   if (pending_inc.new_state.count(from))
     oldstate ^= pending_inc.new_state[from];
+
+  uint64_t mon_osd_markup_burst = g_conf->get_val<uint64_t>("mon_osd_markup_burst");
+  double mon_osd_markup_max_delay = g_conf->get_val<double>("mon_osd_markup_max_delay");
+
+  osd_xinfo_t xi = osdmap.get_xinfo(from);
+  if (mon_osd_markup_max_delay > 0) {
+    if (xi.boot_started_stamp <= xi.down_stamp) {
+      std::stringstream ss1;
+      xi.down_stamp.localtime(ss1);
+      std::stringstream ss2;
+      xi.boot_started_stamp.localtime(ss2);
+      dout(10) << __func__
+              << " down_stamp " << ss1.str()
+              << " boot_started_stamp " << ss2.str() << dendl;
+      utime_t period = xi.down_stamp - xi.boot_started_stamp;
+      double x = ((double)period) / mon_osd_markup_max_delay;
+      if (x > 1.0) {
+        xi.boot_delay /= x;
+        if (xi.boot_delay < 0.5) {
+          // after up period of 2*mon_osd_markup_max_delay^2 seconds boot_delay will be 0
+          xi.boot_delay = 0.0;
+        }
+      }
+      xi.boot_started_stamp = ceph_clock_now();
+      std::stringstream ss;
+      xi.boot_started_stamp.localtime(ss);
+      dout(10) << __func__
+              << " boot_started_stamp " << ss.str()
+              << " boot_delay " << xi.boot_delay << dendl;
+      pending_inc.new_xinfo[from] = xi;
+    }
+  }
+  if (mon_osd_markup_burst > 0) {
+    _trim_mark_up_log();
+  }
 
   // already up?  mark down first?
   if (osdmap.is_up(from)) {
@@ -2584,12 +2620,45 @@ bool OSDMonitor::prepare_boot(MonOpRequestRef op)
       pending_inc.new_state[from] = CEPH_OSD_UP;
     }
     wait_for_finished_proposal(op, new C_RetryMessage(this, op));
+
   } else if (pending_inc.new_up_client.count(from)) {
     // already prepared, just wait
-    dout(7) << __func__ << " already prepared, waiting on "
+    dout(10) << __func__ << " already prepared, waiting on "
 	    << m->get_orig_source_addr() << dendl;
     wait_for_finished_proposal(op, new C_RetryMessage(this, op));
+
+  } else if (mon_osd_markup_max_delay > 0
+             && (xi.boot_started_stamp + xi.boot_delay > ceph_clock_now())) {
+    std::stringstream ss;
+    utime_t until = xi.boot_started_stamp;
+    until += xi.boot_delay;
+    until.localtime(ss);
+    dout(10) << __func__ << " waiting until " << ss.str() << dendl;
+    if (!osdmap.is_wait_up(from)) {
+      // set waitup state
+      pending_inc.new_state[from] = CEPH_OSD_WAIT_UP;
+    }
+    // wait next round
+    wait_for_finished_proposal(op, new C_RetryMessage(this, op));
+
+  } else if (mon_osd_markup_burst > 0
+             && !can_mark_up_by_hb_back_addr(m->hb_back_addr, mon_osd_markup_burst)) {
+    dout(10) << __func__ << " wait interval before next markup burst " << dendl;
+    if (!osdmap.is_wait_up(from)) {
+      // set waitup state
+      pending_inc.new_state[from] = CEPH_OSD_WAIT_UP;
+    }
+    wait_for_finished_proposal(op, new C_RetryMessage(this, op));
+
   } else {
+    if (osdmap.is_wait_up(from)) {
+      // clear waitup state
+      pending_inc.new_state[from] = CEPH_OSD_WAIT_UP;
+    }
+    if (mon_osd_markup_burst > 0) {
+      osd_marked_up_log_by_host[m->hb_back_addr][from] = ceph_clock_now();
+    }
+
     // mark new guy up.
     pending_inc.new_up_client[from] = m->get_orig_source_addr();
     if (!m->cluster_addr.is_blank_ip())
@@ -2604,7 +2673,7 @@ bool OSDMonitor::prepare_boot(MonOpRequestRef op)
       osd_weight[from] = m->sb.weight;
 
     // set uuid?
-    dout(10) << " setting osd." << from << " uuid to " << m->sb.osd_fsid
+    dout(10) << __func__ << " setting osd." << from << " uuid to " << m->sb.osd_fsid
 	     << dendl;
     if (!osdmap.exists(from) || osdmap.get_uuid(from) != m->sb.osd_fsid) {
       // preprocess should have caught this;  if not, assert.
@@ -2616,7 +2685,7 @@ bool OSDMonitor::prepare_boot(MonOpRequestRef op)
     if (m->sb.newest_map == 0 && osdmap.exists(from)) {
       const osd_info_t& i = osdmap.get_info(from);
       if (i.up_from > i.lost_at) {
-	dout(10) << " fresh osd; marking lost_at too" << dendl;
+        dout(10) << __func__ << " fresh osd; marking lost_at too" << dendl;
 	pending_inc.new_lost[from] = osdmap.get_epoch();
       }
     }
@@ -2629,7 +2698,7 @@ bool OSDMonitor::prepare_boot(MonOpRequestRef op)
 
     // adjust last clean unmount epoch?
     const osd_info_t& info = osdmap.get_info(from);
-    dout(10) << " old osd_info: " << info << dendl;
+    dout(10) << __func__ << " old osd_info: " << info << dendl;
     if (m->sb.mounted > info.last_clean_begin ||
 	(m->sb.mounted == info.last_clean_begin &&
 	 m->sb.clean_thru > info.last_clean_end)) {
@@ -2644,11 +2713,10 @@ bool OSDMonitor::prepare_boot(MonOpRequestRef op)
 	pair<epoch_t,epoch_t>(begin, end);
     }
 
-    osd_xinfo_t xi = osdmap.get_xinfo(from);
     if (m->boot_epoch == 0) {
       xi.laggy_probability *= (1.0 - g_conf->mon_osd_laggy_weight);
       xi.laggy_interval *= (1.0 - g_conf->mon_osd_laggy_weight);
-      dout(10) << " not laggy, new xi " << xi << dendl;
+      dout(10) << __func__ << " not laggy, new xi " << xi << dendl;
     } else {
       if (xi.down_stamp.sec()) {
         int interval = ceph_clock_now().sec() -
@@ -2664,7 +2732,20 @@ bool OSDMonitor::prepare_boot(MonOpRequestRef op)
       xi.laggy_probability =
 	g_conf->mon_osd_laggy_weight +
 	xi.laggy_probability * (1.0 - g_conf->mon_osd_laggy_weight);
-      dout(10) << " laggy, now xi " << xi << dendl;
+      dout(10) << __func__ << " laggy, now xi " << xi << dendl;
+    }
+
+    if (mon_osd_markup_max_delay > 0) {
+      if (m->boot_epoch == 0) {
+        xi.boot_delay = 0;
+      } else {
+        xi.boot_delay *= 2;
+        xi.boot_delay += 1;
+        if (xi.boot_delay > mon_osd_markup_max_delay) {
+          xi.boot_delay = mon_osd_markup_max_delay;
+        }
+      }
+      dout(10) << __func__ << " new boot_delay " << xi.boot_delay << dendl;
     }
 
     // set features shared by the osd
@@ -2686,7 +2767,7 @@ bool OSDMonitor::prepare_boot(MonOpRequestRef op)
 	  pending_inc.new_weight[from] = CEPH_OSD_IN;
 	}
       } else {
-	dout(7) << __func__ << " NOIN set, will not mark in "
+        dout(7) << __func__ << " NOIN set, will not mark in "
 		<< m->get_orig_source_addr() << dendl;
       }
     }
@@ -2695,6 +2776,7 @@ bool OSDMonitor::prepare_boot(MonOpRequestRef op)
 
     // wait
     wait_for_finished_proposal(op, new C_Booted(this, op));
+
   }
   return true;
 }
@@ -12245,4 +12327,60 @@ void OSDMonitor::_pool_op_reply(MonOpRequestRef op,
   MPoolOpReply *reply = new MPoolOpReply(m->fsid, m->get_tid(),
 					 ret, epoch, get_last_committed(), blp);
   mon->send_reply(op, reply);
+}
+
+void OSDMonitor::dump_osd_marked_up_by_host(Formatter *f) const
+{
+  f->open_array_section("osd_marked_up_by_host");
+  for (const auto &it : osd_marked_up_log_by_host) {
+    f->open_object_section("host");
+    it.first.dump(f);
+    f->open_array_section("osds");
+    for (const auto &osd_it : it.second) {
+      f->open_object_section("osd");
+      f->dump_int("osd", osd_it.first);
+      stringstream ss;
+      osd_it.second.localtime(ss);
+      f->dump_string("timestamp", ss.str());
+      f->close_section();
+    }
+    f->close_section();
+    f->close_section();
+  }
+  f->close_section();
+}
+
+void OSDMonitor::_trim_mark_up_log()
+{
+  double mon_osd_markup_interval = g_conf->get_val<double>("mon_osd_markup_interval");
+  utime_t cutoff = ceph_clock_now();
+  cutoff -= mon_osd_markup_interval;
+
+  for (auto host_it = osd_marked_up_log_by_host.begin(); host_it != osd_marked_up_log_by_host.end(); ){
+    auto osds = host_it->second;
+    for (auto osd_it = osds.begin(); osd_it != osds.end(); ){
+      if (osd_it->second < cutoff) {
+        osds.erase(osd_it++);
+      } else {
+        ++osd_it;
+      }
+    }
+    if (osds.size() == 0) {
+      osd_marked_up_log_by_host.erase(host_it++);
+    } else {
+      ++host_it;
+    }
+  }
+}
+
+bool OSDMonitor::can_mark_up_by_hb_back_addr(const entity_addr_t& hb_back_addr, uint64_t burst) const
+{
+  auto it = osd_marked_up_log_by_host.find(hb_back_addr);
+  if (it == osd_marked_up_log_by_host.end()) {
+    return true;
+  }
+  if (it->second.size() < burst) {
+    return true;
+  }
+  return false;
 }

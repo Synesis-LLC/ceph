@@ -140,6 +140,7 @@ public:
   set<int>             pending_metadata_rm;
   map<int, failure_info_t> failure_info;
   map<int,utime_t>    down_pending_out;  // osd down -> out
+  map<entity_addr_t, map<int, utime_t>, comapre_host> osd_marked_up_log_by_host;
 
   map<int,double> osd_weight;
 
@@ -190,6 +191,10 @@ private:
   bool should_stash_full() override {
     return false;
   }
+
+  void dump_osd_marked_up_by_host(Formatter *f) const;
+  void _trim_mark_up_log();
+  bool can_mark_up_by_hb_back_addr(const entity_addr_t& hb_back_addr, uint64_t burst) const;
 
   /**
    * hook into trim to include the oldest full map in the trim transaction
