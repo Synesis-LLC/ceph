@@ -11,7 +11,7 @@
  * Foundation.  See file COPYING.
  */
 
-
+#include "boost/tokenizer.hpp"
 #include "include/stringify.h"
 #include "common/errno.h"
 #include "common/backport14.h"
@@ -445,6 +445,10 @@ static void _list_modules(
 
 void PyModuleRegistry::list_modules(std::set<std::string> *modules)
 {
-  _list_modules(g_conf->get_val<std::string>("mgr_module_path"), modules);
+  std::string mgr_module_path = g_conf->get_val<std::string>("mgr_module_path");
+  for (auto& path : boost::tokenizer<boost::char_separator<char>>
+                    (mgr_module_path, boost::char_separator<char>(":"))) {
+    _list_modules(path, modules);
+  }
 }
 
