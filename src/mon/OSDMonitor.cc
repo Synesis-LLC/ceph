@@ -1591,10 +1591,15 @@ bool OSDMonitor::is_pool_currently_all_bluestore(int64_t pool_id,
 int OSDMonitor::dump_osd_metadata(int osd, Formatter *f, ostream *err)
 {
   map<string,string> m;
-  if (int r = load_metadata(osd, m, err))
+  if (int r = load_metadata(osd, m, err)) {
     return r;
-  for (map<string,string>::iterator p = m.begin(); p != m.end(); ++p)
+  }
+  for (map<string,string>::iterator p = m.begin(); p != m.end(); ++p) {
     f->dump_string(p->first.c_str(), p->second);
+  }
+  for (const auto& p : osdmap.crush->get_full_location(osd)) {
+    f->dump_string(("crush_location_" + p.first).c_str(), p.second);
+  }
   return 0;
 }
 
