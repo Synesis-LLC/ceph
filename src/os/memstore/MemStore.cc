@@ -176,6 +176,18 @@ void MemStore::set_fsid(uuid_d u)
   assert(r >= 0);
 }
 
+int MemStore::read_meta(const std::string& key, std::string *value)
+{
+  if (key == "crush_device_class") {
+    if (value != nullptr) {
+      *value = "mem";
+    }
+  } else {
+    return ObjectStore::read_meta(key, value);
+  }
+  return 0;
+}
+
 uuid_d MemStore::get_fsid()
 {
   string fsid_str;

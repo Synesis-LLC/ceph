@@ -384,6 +384,7 @@ public:
 
   void set_fsid(uuid_d u) override;
   uuid_d get_fsid() override;
+  int read_meta(const std::string& key, std::string *value) override;
 
   uint64_t estimate_objects_overhead(uint64_t num_objects) override {
     return 0; //do not care
