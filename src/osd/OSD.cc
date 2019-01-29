@@ -6689,6 +6689,8 @@ COMMAND("dump_pg_recovery_stats", "dump pg recovery statistics",
 	"osd", "r", "cli,rest")
 COMMAND("reset_pg_recovery_stats", "reset pg recovery statistics",
 	"osd", "rw", "cli,rest")
+COMMAND("dump_bdev_stats", "dump block device stats",
+	"osd", "r", "cli,rest")
 COMMAND("compact",
         "compact object store's omap. "
         "WARNING: Compaction probably slows your requests",
@@ -7104,6 +7106,13 @@ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, buffe
     vector<string> argvec;
     get_str_vec(arg, argvec);
     cpu_profiler_handle_command(argvec, ds);
+  }
+
+  else if (prefix == "dump_bdev_stats") {
+    if (f) {
+      store->dump_bdev_stats(f.get());
+      f->flush(ds);
+    }
   }
 
   else if (prefix == "dump_pg_recovery_stats") {
