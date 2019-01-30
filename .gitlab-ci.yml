@@ -1,0 +1,42 @@
+# Kipod Infrastructure Platform
+#
+# Authors:
+#   Yury Z <yuryz@synesis.by>
+#
+# Proprietary and confidential.
+# Unauthorized copying of this file is strictly prohibited.
+# Copyright (C) 2019 Synesis LLC. All rights reserved.
+
+image:
+  name: "registry.develop.kipod/infra/ceph-ci"
+
+variables:
+#   CI_DEBUG_TRACE: "true"
+  GIT_SUBMODULE_STRATEGY: recursive
+
+before_script:
+  - hostname
+  - pwd
+
+# spec:
+#   script:
+#     - echo Storing git credentials to be used by "git clone" commands without username and password ...
+#     - GIT_CREDENTIALS_FILE=~/.git-credentials
+#     - BASE_URL=`echo $CI_REPOSITORY_URL | sed "s;\/*$CI_PROJECT_PATH.*;;"`
+#     - echo $BASE_URL > $GIT_CREDENTIALS_FILE
+#     - git config --global credential.helper store --file=$GIT_CREDENTIALS_FIL
+#
+#     - git clone git@git.synesis.ru:KipodDependencies/ceph ccc1
+#     - cd ccc1
+#     - git submodule update --init --recursive
+
+spec:
+  script:
+#    - ./install-deps.sh
+    - ./do_cmake.sh
+    - cd build
+    - make -j9
+    - make test
+  only:
+    - web
+    - schedules
