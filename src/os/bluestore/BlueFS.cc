@@ -179,12 +179,15 @@ BlueFS::get_bdev_stats() const
   return std::move(r);
 }
 
-int BlueFS::add_block_device(unsigned id, const string& path)
+int BlueFS::add_block_device(unsigned id, const string& path, bool shared_with_bluestore)
 {
   dout(10) << __func__ << " bdev " << id << " path " << path << dendl;
   assert(id < bdev.size());
   assert(bdev[id] == NULL);
   BlockDevice *b = BlockDevice::create(cct, path, NULL, NULL, discard_cb[id], static_cast<void*>(this));
+  if (shared_with_bluestore) {
+    b->set_no_exclusive_lock();
+  }
   int r = b->open(path);
   if (r < 0) {
     delete b;

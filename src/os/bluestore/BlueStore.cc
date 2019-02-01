@@ -4579,6 +4579,7 @@ int BlueStore::_open_db(bool create)
   ceph::shared_ptr<Int64ArrayMergeOperator> merge_op(new Int64ArrayMergeOperator);
 
   string kv_backend;
+
   if (create) {
     kv_backend = cct->_conf->bluestore_kvbackend;
   } else {
@@ -4667,7 +4668,7 @@ int BlueStore::_open_db(bool create)
 
     // shared device
     bfn = path + "/block";
-    r = bluefs->add_block_device(bluefs_shared_bdev, bfn);
+    r = bluefs->add_block_device(bluefs_shared_bdev, bfn, true /* shared with bluestore */);
     if (r < 0) {
       derr << __func__ << " add block device(" << bfn << ") returned: " 
 	   << cpp_strerror(r) << dendl;

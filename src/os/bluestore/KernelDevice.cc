@@ -17,6 +17,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <sys/file.h>
 
 #include "KernelDevice.h"
 #include "include/types.h"
@@ -51,13 +52,12 @@ KernelDevice::KernelDevice(CephContext* cct, aio_callback_t cb, void *cbpriv, ai
 
 int KernelDevice::_lock()
 {
-  struct flock l;
-  memset(&l, 0, sizeof(l));
-  l.l_type = F_WRLCK;
-  l.l_whence = SEEK_SET;
-  int r = ::fcntl(fd_direct, F_SETLK, &l);
-  if (r < 0)
+  dout(10) << __func__ << " " << fd_direct << dendl;
+  int r = ::flock(fd_direct, LOCK_EX | LOCK_NB);
+  if (r < 0) {
+    derr << __func__ << " flock failed on " << path << dendl;
     return -errno;
+  }
   return 0;
 }
 
@@ -94,11 +94,13 @@ int KernelDevice::open(const string& p)
     goto out_fail;
   }
 
-  r = _lock();
-  if (r < 0) {
-    derr << __func__ << " failed to lock " << path << ": " << cpp_strerror(r)
-	 << dendl;
-    goto out_fail;
+  if (lock_exclusive) {
+    r = _lock();
+    if (r < 0) {
+      derr << __func__ << " failed to lock " << path << ": " << cpp_strerror(r)
+	   << dendl;
+      goto out_fail;
+    }
   }
 
   struct stat st;
