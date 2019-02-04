@@ -1,3 +1,9 @@
+ceph (12.2.8-synesis-3.1) stable; urgency=medium
+
+  * Backported flock for block device.
+
+ -- Aleksei Gutikov <aleksey.gutikov@synesis.ru>  Mon, 04 Feb 2019 11:37:55 +0300
+
 ceph (12.2.8-synesis-3) stable; urgency=medium
 
   * Move out custom mgr plugin and patched restapi
