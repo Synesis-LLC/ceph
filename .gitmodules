@@ -1,54 +1,54 @@
 [submodule "ceph-object-corpus"]
 	path = ceph-object-corpus
-	url = git@git.synesis.ru:KipodDependencies/ceph-object-corpus.git
+	url = ../ceph-object-corpus.git
 [submodule "src/civetweb"]
 	path = src/civetweb
-	url = git@git.synesis.ru:KipodDependencies/civetweb
+	url = ../civetweb
 [submodule "src/erasure-code/jerasure/jerasure"]
 	path = src/erasure-code/jerasure/jerasure
-	url = git@git.synesis.ru:KipodDependencies/jerasure.git
+	url = ../jerasure.git
 	branch = v2-ceph
 [submodule "src/erasure-code/jerasure/gf-complete"]
 	path = src/erasure-code/jerasure/gf-complete
-	url = git@git.synesis.ru:KipodDependencies/gf-complete.git
+	url = ../gf-complete.git
 	branch = v3-ceph
 [submodule "src/rocksdb"]
 	path = src/rocksdb
-	url = git@git.synesis.ru:KipodDependencies/rocksdb
+	url = ../rocksdb
 	ignore = dirty
 [submodule "ceph-erasure-code-corpus"]
 	path = ceph-erasure-code-corpus
-	url = git@git.synesis.ru:KipodDependencies/ceph-erasure-code-corpus.git
+	url = ../ceph-erasure-code-corpus.git
 [submodule "src/googletest"]
 	path = src/googletest
-	url = git@git.synesis.ru:KipodDependencies/googletest
+	url = ../googletest
 	branch = ceph-release-1.7.x
 [submodule "src/spdk"]
 	path = src/spdk
-	url = git@git.synesis.ru:KipodDependencies/spdk.git
+	url = ../spdk.git
 [submodule "src/xxHash"]
 	path = src/xxHash
-	url = git@git.synesis.ru:KipodDependencies/xxHash.git
+	url = ../xxHash.git
 [submodule "src/isa-l"]
 	path = src/isa-l
-	url = git@git.synesis.ru:KipodDependencies/isa-l
+	url = ../isa-l
 [submodule "src/lua"]
 	path = src/lua
-	url = git@git.synesis.ru:KipodDependencies/lua.git
+	url = ../lua.git
 	branch = lua-5.3-ceph
 	ignore = dirty
 [submodule "src/dpdk"]
 	path = src/dpdk
-	url = git@git.synesis.ru:KipodDependencies/dpdk
+	url = ../dpdk
 [submodule "src/zstd"]
 	path = src/zstd
-	url = git@git.synesis.ru:KipodDependencies/zstd
+	url = ../zstd
 [submodule "src/crypto/isa-l/isa-l_crypto"]
 	path = src/crypto/isa-l/isa-l_crypto
-	url = git@git.synesis.ru:KipodDependencies/isa-l_crypto
+	url = ../isa-l_crypto
 [submodule "src/blkin"]
 	path = src/blkin
-	url = git@git.synesis.ru:KipodDependencies/blkin
+	url = ../blkin
 [submodule "src/rapidjson"]
 	path = src/rapidjson
-	url = git@git.synesis.ru:KipodDependencies/rapidjson
+	url = ../rapidjson
