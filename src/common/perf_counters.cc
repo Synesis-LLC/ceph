@@ -17,6 +17,9 @@
 #include "common/dout.h"
 #include "common/valgrind.h"
 
+
+#define dout_subsys ceph_subsys_mon
+
 using std::ostringstream;
 
 PerfCountersCollection::PerfCountersCollection(CephContext *cct)
@@ -238,6 +241,13 @@ void PerfCounters::tinc(int idx, utime_t amt, uint32_t avgcount)
   assert(idx > m_lower_bound);
   assert(idx < m_upper_bound);
   perf_counter_data_any_d& data(m_data[idx - m_lower_bound - 1]);
+
+  if (amt.sec_ref() > (24*3600)) {
+    ldout(this->m_cct, 0) << __func__ << " Time shift, skip metric: " << data.name << " amt="
+                          << amt.tv.tv_sec << "." << setfill('0') << setw(9) << amt.tv.tv_nsec << "s" << dendl;
+    return;
+  }
+
   if (!(data.type & PERFCOUNTER_TIME))
     return;
   if (data.type & PERFCOUNTER_LONGRUNAVG) {
@@ -257,6 +267,13 @@ void PerfCounters::tinc(int idx, ceph::timespan amt, uint32_t avgcount)
   assert(idx > m_lower_bound);
   assert(idx < m_upper_bound);
   perf_counter_data_any_d& data(m_data[idx - m_lower_bound - 1]);
+
+  if (amt.count() > (24*3600*1000000000ull)) {
+    ldout(this->m_cct, 0) << __func__ << " Time shift, skip metric: " << data.name << " amt="
+                          << amt.count() << "ns" << dendl;
+    return;
+  }
+
   if (!(data.type & PERFCOUNTER_TIME))
     return;
   if (data.type & PERFCOUNTER_LONGRUNAVG) {
